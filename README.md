@@ -14,6 +14,7 @@ This project implements a complete pipeline for Twitter data analysis using Self
 - **SOM Analysis**: Complete SOM training and clustering using MiniSOM
 - **Rich Visualizations**: Static and interactive plots for analysis results
 - **Export Capabilities**: Save models and export results in multiple formats
+- **MLflow Integration**: Comprehensive experiment tracking and artifact management
 
 ### Data Processing
 - **Text Features**: TF-IDF, sentiment analysis, content type detection
@@ -103,6 +104,30 @@ pip install -e ".[dev]"
 
 ## 🎮 Quick Start
 
+### Running the Demo
+
+```bash
+# Basic demo without MLflow tracking
+uv run python main.py
+
+# With MLflow experiment tracking
+uv run python main.py --experiment "my-twitter-som-experiment"
+
+# With custom MLflow tracking server
+uv run python main.py --experiment "my-experiment" --mlflow-tracking-uri "http://mlflow-server:5000"
+```
+
+### MLflow Integration
+
+This project includes comprehensive MLflow integration for experiment tracking:
+
+- **Automatic Parameter Logging**: SOM configuration, data statistics
+- **Metrics Tracking**: Training metrics, cluster analysis, custom metrics
+- **Artifact Management**: Models, visualizations, reports
+- **Experiment Organization**: Compare different runs and configurations
+
+See [MLflow_Integration.md](MLflow_Integration.md) for detailed documentation.
+
 ### Basic Usage
 
 ```python
@@ -142,8 +167,8 @@ config = SOMTrainingConfig(
     normalize_features=True
 )
 
-# 3. Train SOM
-analyzer = TwitterSOMAnalyzer(config)
+# 3. Train SOM (with optional MLflow tracking)
+analyzer = TwitterSOMAnalyzer(config, mlflow_experiment_name="twitter-analysis")
 training_stats = analyzer.train(collection)
 
 # 4. Analyze results
@@ -152,7 +177,16 @@ print(f"Found {cluster_summary['total_clusters']} clusters")
 
 # 5. Visualize results
 visualizer = SOMVisualizer(analyzer)
-visualizer.plot_som_topology()
+visualizer.plot_som_topology(save_path="som_topology.png")
+
+# 6. Log artifacts to MLflow (if enabled)
+analyzer.log_visualizations_to_mlflow({
+    "topology": "som_topology.png"
+})
+
+# 7. Save model and end MLflow run
+analyzer.save_model("model.pkl")
+analyzer.end_mlflow_run()
 visualizer.plot_cluster_analysis()
 ```
 

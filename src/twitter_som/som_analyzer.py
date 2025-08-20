@@ -11,12 +11,21 @@ from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 import pickle
 import json
+import os
 
 try:
     from minisom import MiniSom
     MINISOM_AVAILABLE = True
 except ImportError:
     MINISOM_AVAILABLE = False
+
+try:
+    import mlflow
+    import mlflow.sklearn
+
+    MLFLOW_AVAILABLE = True
+except ImportError:
+    MLFLOW_AVAILABLE = False
 
 from .models import TwitterData, TwitterDataCollection, SOMTrainingConfig
 from .preprocessor import TwitterPreprocessor
@@ -33,12 +42,17 @@ class TwitterSOMAnalyzer:
     - Save/load trained models
     """
 
-    def __init__(self, config: SOMTrainingConfig):
+    def __init__(
+        self,
+        config: SOMTrainingConfig,
+        mlflow_experiment_name: Optional[str] = None,
+    ):
         """
         Initialize the SOM analyzer.
 
         Args:
             config: SOM training configuration
+            mlflow_experiment_name: Name of MLflow experiment for logging (optional)
         """
         if not MINISOM_AVAILABLE:
             raise ImportError("MiniSOM is required but not installed. Install with: pip install minisom")
@@ -50,6 +64,15 @@ class TwitterSOMAnalyzer:
         self.training_data: Optional[np.ndarray] = None
         self.training_collection: Optional[TwitterDataCollection] = None
         self.is_trained = False
+
+        # MLflow configuration
+        self.mlflow_experiment_name = mlflow_experiment_name
+        self.mlflow_enabled = (
+            MLFLOW_AVAILABLE and mlflow_experiment_name is not None
+        )
+
+        if self.mlflow_enabled:
+            mlflow.set_experiment(mlflow_experiment_name)
 
         # Analysis results
         self.cluster_assignments: Optional[np.ndarray] = None
@@ -67,60 +90,140 @@ class TwitterSOMAnalyzer:
         Returns:
             Training statistics and metrics
         """
-        if verbose:
-            print(f"Preprocessing {len(collection.tweets)} tweets...")
+        # Start MLflow run if enabled
+        if self.mlflow_enabled:
+            mlflow.start_run()
 
-        # Preprocess the data
-        features, feature_names = self.preprocessor.fit_transform(collection)
-        self.training_data = features
-        self.training_collection = collection
-        self.feature_names = feature_names
+        try:
+            if verbose:
+                print(f"Preprocessing {len(collection.tweets)} tweets...")
 
-        if verbose:
-            print(f"Extracted {features.shape[1]} features")
+            # Preprocess the data
+            features, feature_names = self.preprocessor.fit_transform(
+                collection
+            )
+            self.training_data = features
+            self.training_collection = collection
+            self.feature_names = feature_names
 
-        # Initialize SOM
-        self.som = MiniSom(
-            x=self.config.x_dim,
-            y=self.config.y_dim,
-            input_len=features.shape[1],
-            learning_rate=self.config.learning_rate,
-            neighborhood_function=self.config.neighborhood_function,
-            topology=self.config.topology,
-            activation_distance=self.config.activation_distance
-        )
+            if verbose:
+                print(f"Extracted {features.shape[1]} features")
 
-        if verbose:
-            print(f"Initializing SOM with dimensions {self.config.x_dim}x{self.config.y_dim}")
+            # Log training configuration to MLflow
+            if self.mlflow_enabled:
+                mlflow.log_params(
+                    {
+                        "x_dim": self.config.x_dim,
+                        "y_dim": self.config.y_dim,
+                        "learning_rate": self.config.learning_rate,
+                        "num_iterations": self.config.num_iterations,
+                        "normalize_features": self.config.normalize_features,
+                        "use_pca": self.config.use_pca,
+                        "include_temporal_features": self.config.include_temporal_features,
+                        "include_engagement_features": self.config.include_engagement_features,
+                        "include_text_features": self.config.include_text_features,
+                        "include_network_features": self.config.include_network_features,
+                        "neighborhood_function": self.config.neighborhood_function,
+                        "topology": self.config.topology,
+                        "activation_distance": self.config.activation_distance,
+                        "num_samples": len(collection.tweets),
+                        "num_features": features.shape[1],
+                        "som_grid_size": self.config.x_dim * self.config.y_dim,
+                    }
+                )
 
-        # Initialize weights
-        self.som.pca_weights_init(features)
+            # Initialize SOM
+            self.som = MiniSom(
+                x=self.config.x_dim,
+                y=self.config.y_dim,
+                input_len=features.shape[1],
+                learning_rate=self.config.learning_rate,
+                neighborhood_function=self.config.neighborhood_function,
+                topology=self.config.topology,
+                activation_distance=self.config.activation_distance,
+            )
 
-        if verbose:
-            print(f"Training SOM for {self.config.num_iterations} iterations...")
+            if verbose:
+                print(
+                    f"Initializing SOM with dimensions {self.config.x_dim}x{self.config.y_dim}"
+                )
 
-        # Train the SOM
-        self.som.train(
-            features,
-            num_iteration=self.config.num_iterations,
-            verbose=verbose
-        )
+            # Initialize weights
+            self.som.pca_weights_init(features)
 
-        self.is_trained = True
+            if verbose:
+                print(
+                    f"Training SOM for {self.config.num_iterations} iterations..."
+                )
 
-        # Analyze the results
-        self._analyze_clusters()
+            # Train the SOM
+            self.som.train(
+                features,
+                num_iteration=self.config.num_iterations,
+                verbose=verbose,
+            )
 
-        # Calculate training statistics
-        training_stats = self._calculate_training_stats()
+            self.is_trained = True
 
-        if verbose:
-            print("Training completed!")
-            print(f"Found {len(self.cluster_stats)} clusters")
-            print(f"Quantization error: {training_stats['quantization_error']:.4f}")
-            print(f"Topographic error: {training_stats['topographic_error']:.4f}")
+            # Analyze the results
+            self._analyze_clusters()
 
-        return training_stats
+            # Calculate training statistics
+            training_stats = self._calculate_training_stats()
+
+            # Log metrics to MLflow
+            if self.mlflow_enabled:
+                mlflow.log_metrics(
+                    {
+                        "quantization_error": training_stats[
+                            "quantization_error"
+                        ],
+                        "topographic_error": training_stats[
+                            "topographic_error"
+                        ],
+                        "num_clusters": training_stats["num_clusters"],
+                        "largest_cluster_size": training_stats[
+                            "largest_cluster_size"
+                        ],
+                        "smallest_cluster_size": training_stats[
+                            "smallest_cluster_size"
+                        ],
+                        "mean_cluster_size": (
+                            training_stats["num_samples"]
+                            / training_stats["num_clusters"]
+                            if training_stats["num_clusters"] > 0
+                            else 0
+                        ),
+                        "cluster_size_std": (
+                            np.std(
+                                [
+                                    stats["size"]
+                                    for stats in self.cluster_stats.values()
+                                ]
+                            )
+                            if self.cluster_stats
+                            else 0
+                        ),
+                    }
+                )
+
+            if verbose:
+                print("Training completed!")
+                print(f"Found {len(self.cluster_stats)} clusters")
+                print(
+                    f"Quantization error: {training_stats['quantization_error']:.4f}"
+                )
+                print(
+                    f"Topographic error: {training_stats['topographic_error']:.4f}"
+                )
+
+            return training_stats
+
+        except Exception as e:
+            # End MLflow run if there's an error
+            if self.mlflow_enabled and mlflow.active_run():
+                mlflow.end_run(status="FAILED")
+            raise e
 
     def _analyze_clusters(self) -> None:
         """Analyze the trained SOM to identify clusters and patterns."""
@@ -215,7 +318,7 @@ class TwitterSOMAnalyzer:
             'som_dimensions': (self.config.x_dim, self.config.y_dim),
             'largest_cluster_size': max(stats['size'] for stats in self.cluster_stats.values()) if self.cluster_stats else 0,
             'smallest_cluster_size': min(stats['size'] for stats in self.cluster_stats.values()) if self.cluster_stats else 0,
-            'training_config': self.config.dict()
+            'training_config': self.config.model_dump()
         }
 
         return stats
@@ -374,66 +477,47 @@ class TwitterSOMAnalyzer:
             'median': float(np.median(engagements))
         }
 
-    def save_model(self, filepath: str) -> None:
+    def save_model(self, filepath: Optional[str] = None) -> None:
         """
         Save the trained SOM model and preprocessor.
 
         Args:
-            filepath: Path to save the model
+            filepath: Path to save the model. If None and MLflow is enabled, saves temporarily for logging only.
         """
         if not self.is_trained:
             raise ValueError("Cannot save untrained model")
 
         model_data = {
             'som_weights': self.som.get_weights(),
-            'config': self.config.dict(),
+            'config': self.config.model_dump(),
             'feature_names': self.feature_names,
             'cluster_stats': self.cluster_stats,
             'preprocessor': self.preprocessor,
             'training_stats': self._calculate_training_stats()
         }
 
-        with open(filepath, 'wb') as f:
-            pickle.dump(model_data, f)
+        # Determine if we should save to disk
+        should_save_to_disk = filepath is not None and (not self.mlflow_enabled or mlflow.active_run() is None)
+        temp_filepath = filepath or "temp_model.pkl"
 
-    def load_model(self, filepath: str) -> None:
-        """
-        Load a trained SOM model.
+        if should_save_to_disk or self.mlflow_enabled:
+            with open(temp_filepath, 'wb') as f:
+                pickle.dump(model_data, f)
 
-        Args:
-            filepath: Path to the saved model
-        """
-        with open(filepath, 'rb') as f:
-            model_data = pickle.load(f)
+        # Log model as artifact if MLflow is enabled
+        if self.mlflow_enabled and mlflow.active_run():
+            mlflow.log_artifact(temp_filepath, artifact_path="models")
+            
+            # Remove temporary file if we only created it for MLflow
+            if filepath is None and os.path.exists(temp_filepath):
+                os.remove(temp_filepath)
 
-        # Restore configuration
-        self.config = SOMTrainingConfig(**model_data['config'])
-
-        # Restore SOM
-        weights = model_data['som_weights']
-        self.som = MiniSom(
-            x=weights.shape[0],
-            y=weights.shape[1],
-            input_len=weights.shape[2],
-            learning_rate=self.config.learning_rate,
-            neighborhood_function=self.config.neighborhood_function,
-            topology=self.config.topology,
-            activation_distance=self.config.activation_distance
-        )
-        self.som._weights = weights
-
-        # Restore other components
-        self.feature_names = model_data['feature_names']
-        self.cluster_stats = model_data['cluster_stats']
-        self.preprocessor = model_data['preprocessor']
-        self.is_trained = True
-
-    def export_results(self, filepath: str) -> None:
+    def export_results(self, filepath: Optional[str] = None) -> None:
         """
         Export analysis results to JSON.
 
         Args:
-            filepath: Path to save the results
+            filepath: Path to save the results. If None and MLflow is enabled, saves temporarily for logging only.
         """
         if not self.is_trained:
             raise ValueError("Cannot export results from untrained model")
@@ -445,5 +529,56 @@ class TwitterSOMAnalyzer:
             'cluster_details': self.cluster_stats
         }
 
-        with open(filepath, 'w') as f:
-            json.dump(results, f, indent=2, default=str)
+        # Determine if we should save to disk
+        should_save_to_disk = filepath is not None and (not self.mlflow_enabled or mlflow.active_run() is None)
+        temp_filepath = filepath or "temp_results.json"
+
+        if should_save_to_disk or self.mlflow_enabled:
+            with open(temp_filepath, 'w') as f:
+                json.dump(results, f, indent=2, default=str)
+
+        # Log results as artifact if MLflow is enabled
+        if self.mlflow_enabled and mlflow.active_run():
+            mlflow.log_artifact(temp_filepath, artifact_path="results")
+            
+            # Remove temporary file if we only created it for MLflow
+            if filepath is None and os.path.exists(temp_filepath):
+                os.remove(temp_filepath)
+
+    def log_visualizations_to_mlflow(
+        self, visualization_paths: Dict[str, str]
+    ) -> None:
+        """
+        Log visualization artifacts to MLflow.
+
+        Args:
+            visualization_paths: Dictionary mapping visualization names to file paths
+        """
+        if not self.mlflow_enabled or not mlflow.active_run():
+            return
+
+        for viz_name, file_path in visualization_paths.items():
+            if os.path.exists(file_path):
+                mlflow.log_artifact(file_path, artifact_path="visualizations")
+
+    def log_additional_metrics(self, custom_metrics: Dict[str, float]) -> None:
+        """
+        Log additional custom metrics to MLflow.
+
+        Args:
+            custom_metrics: Dictionary of metric names and values
+        """
+        if not self.mlflow_enabled or not mlflow.active_run():
+            return
+
+        mlflow.log_metrics(custom_metrics)
+
+    def end_mlflow_run(self, status: str = "FINISHED") -> None:
+        """
+        End the current MLflow run.
+
+        Args:
+            status: Run status ("FINISHED", "FAILED", "KILLED")
+        """
+        if self.mlflow_enabled and mlflow.active_run():
+            mlflow.end_run(status=status)

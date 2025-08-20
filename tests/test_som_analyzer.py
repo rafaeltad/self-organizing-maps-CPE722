@@ -160,7 +160,7 @@ class TestTwitterSOMAnalyzer:
                 np.random.random((10, 15)),
                 [f"feature_{i}" for i in range(15)]
             )
-            mock_preprocessor_instance.transform.return_value = np.random.random((5, 15))
+            mock_preprocessor_instance.transform.return_value = np.random.random((1, 15))  # 1 tweet, 15 features
             mock_preprocessor.return_value = mock_preprocessor_instance
 
             analyzer = TwitterSOMAnalyzer(config)

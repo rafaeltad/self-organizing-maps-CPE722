@@ -191,7 +191,21 @@ class TwitterPreprocessor:
 
         # TF-IDF features
         if not self.is_fitted:
-            tfidf_features = self.tfidf_vectorizer.fit_transform(clean_texts)
+            try:
+                tfidf_features = self.tfidf_vectorizer.fit_transform(clean_texts)
+            except ValueError as e:
+                if "empty vocabulary" in str(e) or "no terms remain" in str(e):
+                    # Fallback for edge cases - create vectorizer with min_df=1
+                    fallback_vectorizer = TfidfVectorizer(
+                        max_features=100,
+                        stop_words='english', 
+                        ngram_range=(1, 2),
+                        min_df=1
+                    )
+                    tfidf_features = fallback_vectorizer.fit_transform(clean_texts)
+                    self.tfidf_vectorizer = fallback_vectorizer
+                else:
+                    raise e
         else:
             tfidf_features = self.tfidf_vectorizer.transform(clean_texts)
 

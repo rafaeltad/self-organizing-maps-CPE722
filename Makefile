@@ -24,10 +24,10 @@ setup: install-dev configure-python
 
 # Install dependencies
 install:
-	pip install -r requirements.in
+	uv pip install -r requirements.in
 
 install-dev:
-	pip install -e ".[dev]"
+	uv pip install -e ".[dev]"
 
 # Configure Python environment
 configure-python:

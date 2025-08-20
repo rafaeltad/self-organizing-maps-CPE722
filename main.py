@@ -7,8 +7,10 @@ of the Twitter SOM analysis package.
 
 import numpy as np
 from datetime import datetime, timezone, timedelta
-from typing import List
+from typing import List, Optional
 import random
+import argparse
+import os
 
 from src.twitter_som import (
     TwitterData,
@@ -120,22 +122,33 @@ def generate_sample_data(num_tweets: int = 100) -> TwitterDataCollection:
         tweet = TwitterData(
             id=str(i + 1),
             text=text,
-            created_at=base_date + timedelta(
+            created_at=base_date
+            + timedelta(
                 days=random.randint(0, 30),
                 hours=random.randint(0, 23),
-                minutes=random.randint(0, 59)
+                minutes=random.randint(0, 59),
             ),
             user_id=f"uid_{random.choice(usernames)}",
             username=random.choice(usernames),
-            like_count=max(0, int(random.exponential(10 * base_engagement))),
-            retweet_count=max(0, int(random.exponential(3 * base_engagement))),
-            reply_count=max(0, int(random.exponential(2 * base_engagement))),
-            quote_count=max(0, int(random.exponential(1 * base_engagement))),
+            like_count=max(
+                0, int(np.random.exponential(10 * base_engagement))
+            ),
+            retweet_count=max(
+                0, int(np.random.exponential(3 * base_engagement))
+            ),
+            reply_count=max(
+                0, int(np.random.exponential(2 * base_engagement))
+            ),
+            quote_count=max(
+                0, int(np.random.exponential(1 * base_engagement))
+            ),
             lang=random.choice(languages),
-            location=random.choice(locations) if random.random() < 0.7 else None,
+            location=(
+                random.choice(locations) if random.random() < 0.7 else None
+            ),
             is_retweet=random.random() < 0.2,
             is_reply=random.random() < 0.15,
-            is_quote=random.random() < 0.1
+            is_quote=random.random() < 0.1,
         )
 
         tweets.append(tweet)
@@ -148,11 +161,15 @@ def generate_sample_data(num_tweets: int = 100) -> TwitterDataCollection:
     )
 
 
-def demonstrate_som_analysis():
-    """Demonstrate the Twitter SOM analysis workflow."""
+def demonstrate_som_analysis(experiment_name: Optional[str] = None):
+    """Demonstrate the Twitter SOM analysis workflow with optional MLflow logging."""
     print("=" * 60)
     print("TWITTER SOM ANALYSIS DEMONSTRATION")
     print("=" * 60)
+
+    if experiment_name:
+        print(f"MLflow experiment: {experiment_name}")
+        print("-" * 60)
 
     # 1. Generate sample data
     print("\n1. GENERATING SAMPLE DATA")
@@ -187,8 +204,10 @@ def demonstrate_som_analysis():
     print(f"  Iterations: {config.num_iterations}")
     print(f"  Feature normalization: {config.normalize_features}")
 
-    # Initialize and train analyzer
-    analyzer = TwitterSOMAnalyzer(config)
+    # Initialize and train analyzer with MLflow support
+    analyzer = TwitterSOMAnalyzer(
+        config, mlflow_experiment_name=experiment_name
+    )
     training_stats = analyzer.train(collection, verbose=True)
 
     print(f"\nTraining completed!")
@@ -228,27 +247,67 @@ def demonstrate_som_analysis():
 
     try:
         visualizer = SOMVisualizer(analyzer)
+        
+        # Use temporary files if MLflow is enabled, otherwise save permanently
+        use_temp_files = experiment_name is not None
+        
+        if use_temp_files:
+            # Create temporary files for MLflow logging
+            import tempfile
+            temp_dir = tempfile.mkdtemp()
+            topology_path = f"{temp_dir}/som_topology.png"
+            cluster_path = f"{temp_dir}/cluster_analysis.png"
+            distribution_path = f"{temp_dir}/tweet_distribution.png"
+            report_path = f"{temp_dir}/som_analysis_report.txt"
+            interactive_path = f"{temp_dir}/som_interactive.html"
+        else:
+            # Save files permanently when MLflow is not used
+            topology_path = "som_topology.png"
+            cluster_path = "cluster_analysis.png"
+            distribution_path = "tweet_distribution.png"
+            report_path = "som_analysis_report.txt"
+            interactive_path = "som_interactive.html"
 
         print("Creating SOM topology plot...")
-        visualizer.plot_som_topology(save_path="som_topology.png")
+        visualizer.plot_som_topology(save_path=topology_path)
 
         print("Creating cluster analysis plot...")
-        visualizer.plot_cluster_analysis(save_path="cluster_analysis.png")
+        visualizer.plot_cluster_analysis(save_path=cluster_path)
 
         print("Creating tweet distribution plot...")
-        visualizer.plot_tweet_distribution(save_path="tweet_distribution.png")
+        visualizer.plot_tweet_distribution(save_path=distribution_path)
 
         print("Generating analysis report...")
-        visualizer.generate_report("som_analysis_report.txt")
+        visualizer.generate_report(report_path)
 
         # Try interactive visualization if Plotly is available
         try:
             print("Creating interactive visualization...")
-            visualizer.create_interactive_visualization("som_interactive.html")
+            visualizer.create_interactive_visualization(interactive_path)
         except ImportError:
             print("Plotly not available - skipping interactive visualization")
 
-        print("Visualizations saved successfully!")
+        if use_temp_files:
+            print("Visualizations created and will be logged to MLflow only!")
+        else:
+            print("Visualizations saved successfully!")
+
+        # Log visualizations to MLflow if enabled
+        if experiment_name:
+            visualization_paths = {
+                "som_topology": topology_path,
+                "cluster_analysis": cluster_path,
+                "tweet_distribution": distribution_path,
+                "analysis_report": report_path,
+                "interactive_viz": interactive_path,
+            }
+            analyzer.log_visualizations_to_mlflow(visualization_paths)
+            
+            # Clean up temporary directory
+            if use_temp_files and 'temp_dir' in locals():
+                import shutil
+                shutil.rmtree(temp_dir)
+                print("Temporary files cleaned up.")
 
     except Exception as e:
         print(f"Visualization error: {e}")
@@ -272,22 +331,56 @@ def demonstrate_som_analysis():
     print("-" * 18)
 
     try:
-        print("Saving trained model...")
-        analyzer.save_model("twitter_som_model.pkl")
+        if experiment_name:
+            # Only log to MLflow, don't save files locally
+            print("Saving trained model to MLflow...")
+            analyzer.save_model()  # No filepath = temporary file for MLflow only
 
-        print("Exporting results to JSON...")
-        analyzer.export_results("som_results.json")
+            print("Exporting results to MLflow...")
+            analyzer.export_results()  # No filepath = temporary file for MLflow only
+            
+            print("Results logged to MLflow successfully!")
+        else:
+            # Save files locally when MLflow is not used
+            print("Saving trained model...")
+            analyzer.save_model("twitter_som_model.pkl")
 
-        print("Results saved successfully!")
+            print("Exporting results to JSON...")
+            analyzer.export_results("som_results.json")
+            
+            print("Results saved successfully!")
+
+        # Log additional metrics to MLflow if enabled
+        if experiment_name:
+            cluster_summary = analyzer.get_all_clusters_summary()
+            cluster_sizes = (
+                [stats["size"] for stats in analyzer.cluster_stats.values()]
+                if analyzer.cluster_stats
+                else [0]
+            )
+            additional_metrics = {
+                "avg_cluster_size": np.mean(cluster_sizes),
+                "cluster_size_variance": np.var(cluster_sizes),
+                "unique_users": len(collection.get_unique_users()),
+                "total_tweets": len(collection.tweets),
+                "avg_engagement_per_tweet": np.mean(
+                    [tweet.get_engagement_score() for tweet in collection.tweets]
+                ),
+            }
+            analyzer.log_additional_metrics(additional_metrics)
 
     except Exception as e:
         print(f"Error saving results: {e}")
+
+    # End MLflow run if it was started
+    if experiment_name:
+        analyzer.end_mlflow_run()
 
     print("\n" + "=" * 60)
     print("DEMONSTRATION COMPLETED!")
     print("=" * 60)
 
-    return analyzer, visualizer
+    return analyzer, visualizer if "visualizer" in locals() else None
 
 
 def demonstrate_use_cases():
@@ -402,13 +495,52 @@ Benefits of using SOM for Twitter analysis:
 
 def main():
     """Main application entry point."""
-    print("Welcome to Twitter SOM Analysis!")
-    print("This application demonstrates the use of Self-Organizing Maps")
-    print("for analyzing Twitter data patterns and discovering insights.")
+
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(
+        description="Twitter SOM Analysis with MLflow logging support",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python main.py                                    # Run without MLflow logging
+  python main.py --experiment "twitter-som-exp"    # Run with MLflow experiment
+  python main.py --experiment "prod-experiment"    # Run with custom experiment name
+        """,
+    )
+
+    parser.add_argument(
+        "--experiment",
+        type=str,
+        default=None,
+        help="MLflow experiment name for logging metrics and artifacts. If not provided, MLflow logging is disabled.",
+    )
+
+    parser.add_argument(
+        "--mlflow-tracking-uri",
+        type=str,
+        default=None,
+        help="MLflow tracking server URI (optional). If not provided, uses local file-based tracking.",
+    )
+
+    args = parser.parse_args()
+
+    # Set MLflow tracking URI if provided
+    if args.mlflow_tracking_uri:
+        try:
+            import mlflow
+
+            mlflow.set_tracking_uri(args.mlflow_tracking_uri)
+            print(f"MLflow tracking URI set to: {args.mlflow_tracking_uri}")
+        except ImportError:
+            print(
+                "Warning: MLflow not available, tracking URI setting ignored"
+            )
 
     try:
-        # Run main demonstration
-        analyzer, visualizer = demonstrate_som_analysis()
+        # Run main demonstration with optional MLflow experiment
+        analyzer, visualizer = demonstrate_som_analysis(
+            experiment_name=args.experiment
+        )
 
         # Show use cases
         demonstrate_use_cases()
@@ -416,6 +548,11 @@ def main():
         print(f"\n{'SUCCESS!'}")
         print("The Twitter SOM analysis demonstration completed successfully.")
         print("Check the generated files for detailed results and visualizations.")
+
+        if args.experiment:
+            print(
+                f"MLflow experiment '{args.experiment}' contains logged metrics and artifacts."
+            )
 
         return analyzer, visualizer
 

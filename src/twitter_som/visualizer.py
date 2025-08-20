@@ -7,6 +7,8 @@ Self-Organizing Map results on Twitter data.
 
 import numpy as np
 import pandas as pd
+import matplotlib
+matplotlib.use('Agg')  # Set non-interactive backend to prevent figure windows
 import matplotlib.pyplot as plt
 import seaborn as sns
 from typing import List, Dict, Any, Optional, Tuple
@@ -80,8 +82,8 @@ class SOMVisualizer:
 
         if save_path:
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
-
-        plt.show()
+            
+        plt.close()  # Close figure to free memory
 
     def _plot_distance_map(self, ax: plt.Axes) -> None:
         """Plot the distance map (U-matrix)."""
@@ -213,8 +215,8 @@ class SOMVisualizer:
 
         if save_path:
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
-
-        plt.show()
+            
+        plt.close()  # Close figure to free memory
 
     def _plot_engagement_vs_size(self, ax: plt.Axes) -> None:
         """Plot engagement vs cluster size."""
@@ -521,8 +523,8 @@ class SOMVisualizer:
 
         if save_path:
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
-
-        plt.show()
+            
+        plt.close()  # Close figure to free memory
 
     def generate_report(self, output_file: str = 'som_analysis_report.txt') -> None:
         """
