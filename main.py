@@ -247,10 +247,10 @@ def demonstrate_som_analysis(experiment_name: Optional[str] = None):
 
     try:
         visualizer = SOMVisualizer(analyzer)
-        
+
         # Use temporary files if MLflow is enabled, otherwise save permanently
         use_temp_files = experiment_name is not None
-        
+
         if use_temp_files:
             # Create temporary files for MLflow logging
             import tempfile
@@ -302,7 +302,7 @@ def demonstrate_som_analysis(experiment_name: Optional[str] = None):
                 "interactive_viz": interactive_path,
             }
             analyzer.log_visualizations_to_mlflow(visualization_paths)
-            
+
             # Clean up temporary directory
             if use_temp_files and 'temp_dir' in locals():
                 import shutil
@@ -338,7 +338,7 @@ def demonstrate_som_analysis(experiment_name: Optional[str] = None):
 
             print("Exporting results to MLflow...")
             analyzer.export_results()  # No filepath = temporary file for MLflow only
-            
+
             print("Results logged to MLflow successfully!")
         else:
             # Save files locally when MLflow is not used
@@ -347,7 +347,7 @@ def demonstrate_som_analysis(experiment_name: Optional[str] = None):
 
             print("Exporting results to JSON...")
             analyzer.export_results("som_results.json")
-            
+
             print("Results saved successfully!")
 
         # Log additional metrics to MLflow if enabled

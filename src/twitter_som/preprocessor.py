@@ -198,9 +198,9 @@ class TwitterPreprocessor:
                     # Fallback for edge cases - create vectorizer with min_df=1
                     fallback_vectorizer = TfidfVectorizer(
                         max_features=100,
-                        stop_words='english', 
+                        stop_words="english",
                         ngram_range=(1, 2),
-                        min_df=1
+                        min_df=1,
                     )
                     tfidf_features = fallback_vectorizer.fit_transform(clean_texts)
                     self.tfidf_vectorizer = fallback_vectorizer

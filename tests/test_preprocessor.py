@@ -370,22 +370,22 @@ class TestTwitterPreprocessor:
                 text="amazing content here",  # Simple text with real words
                 created_at=datetime.now(timezone.utc),
                 user_id="user1",
-                username="user1"
+                username="user1",
             ),
             TwitterData(
-                id="2", 
+                id="2",
                 text="great content today",  # Overlapping "content" word
                 created_at=datetime.now(timezone.utc),
                 user_id="user2",
-                username="user2"
+                username="user2",
             ),
             TwitterData(
                 id="3",
-                text="wonderful day here",  # Overlapping "here" word  
+                text="wonderful day here",  # Overlapping "here" word
                 created_at=datetime.now(timezone.utc),
-                user_id="user3", 
-                username="user3"
-            )
+                user_id="user3",
+                username="user3",
+            ),
         ]
         collection = TwitterDataCollection(tweets=tweets, collection_name="test")
 

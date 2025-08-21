@@ -507,7 +507,7 @@ class TwitterSOMAnalyzer:
         # Log model as artifact if MLflow is enabled
         if self.mlflow_enabled and mlflow.active_run():
             mlflow.log_artifact(temp_filepath, artifact_path="models")
-            
+
             # Remove temporary file if we only created it for MLflow
             if filepath is None and os.path.exists(temp_filepath):
                 os.remove(temp_filepath)
@@ -540,7 +540,7 @@ class TwitterSOMAnalyzer:
         # Log results as artifact if MLflow is enabled
         if self.mlflow_enabled and mlflow.active_run():
             mlflow.log_artifact(temp_filepath, artifact_path="results")
-            
+
             # Remove temporary file if we only created it for MLflow
             if filepath is None and os.path.exists(temp_filepath):
                 os.remove(temp_filepath)
