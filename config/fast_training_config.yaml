@@ -1,0 +1,22 @@
+# Fast Training Configuration
+# Optimized for quick prototyping and testing
+
+som:
+  x_dim: 8                         # Smaller grid for faster training
+  y_dim: 8
+  learning_rate: 0.3               # Higher learning rate for faster convergence
+  neighborhood_function: "bubble"  # Simpler neighborhood function
+  topology: "rectangular"
+  activation_distance: "euclidean"
+  num_iterations: 500              # Fewer iterations for speed
+
+preprocessing:
+  normalize_features: true
+  use_pca: false                   # Skip PCA for speed
+  pca_components: null
+
+features:
+  include_temporal_features: true
+  include_engagement_features: false
+  include_text_features: false    # Skip text features for speed
+  include_network_features: false # Skip network features for speed

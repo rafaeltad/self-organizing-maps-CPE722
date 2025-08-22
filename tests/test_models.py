@@ -1,8 +1,9 @@
 """
 Test file for Twitter data models.
 
-Following Test-Driven Development (TDD) principles, these tests define
-the expected behavior of our Twitter data models before implementation.
+Following Test-Driven Development (TDD) principles, these tests defi        assert "test.org" in tweet.urls
+
+    def test_clean_text_method(self):vior of our Twitter data models before implementation.
 """
 
 import pytest
@@ -18,46 +19,38 @@ class TestTwitterData:
     def test_create_valid_twitter_data(self):
         """Test creating a valid TwitterData instance."""
         tweet_data = {
-            "id": "1234567890",
+            "id_str": "1234567890",
             "text": "This is a test tweet #testing @mention",
             "created_at": datetime.now(timezone.utc),
             "user_id": "user123",
-            "username": "testuser",
-            "retweet_count": 5,
-            "like_count": 10,
-            "reply_count": 2,
-            "quote_count": 1,
+            "screen_name": "testuser",
             "lang": "en",
-            "location": "Test City"
+            "location": "Test City",
         }
 
         tweet = TwitterData(**tweet_data)
 
-        assert tweet.id == "1234567890"
+        assert tweet.id_str == "1234567890"
         assert tweet.text == "This is a test tweet #testing @mention"
         assert tweet.user_id == "user123"
-        assert tweet.username == "testuser"
-        assert tweet.retweet_count == 5
-        assert tweet.like_count == 10
-        assert tweet.reply_count == 2
-        assert tweet.quote_count == 1
+        assert tweet.screen_name == "testuser"
         assert tweet.lang == "en"
         assert tweet.location == "Test City"
+
+        # Test legacy properties
+        assert tweet.id == "1234567890"
+        assert tweet.username == "testuser"
 
     def test_twitter_data_with_defaults(self):
         """Test TwitterData with only required fields."""
         tweet = TwitterData(
-            id="123",
+            id_str="123",
             text="Test tweet",
             created_at=datetime.now(timezone.utc),
             user_id="user1",
-            username="testuser"
+            screen_name="testuser",
         )
 
-        assert tweet.retweet_count == 0
-        assert tweet.like_count == 0
-        assert tweet.reply_count == 0
-        assert tweet.quote_count == 0
         assert tweet.hashtags == []
         assert tweet.mentions == []
         assert tweet.urls == []
@@ -70,33 +63,21 @@ class TestTwitterData:
         """Test that empty text raises validation error."""
         with pytest.raises(ValueError, match="Tweet text cannot be empty"):
             TwitterData(
-                id="123",
+                id_str="123",
                 text="   ",  # Only whitespace
                 created_at=datetime.now(timezone.utc),
                 user_id="user1",
-                username="testuser"
-            )
-
-    def test_negative_engagement_validation(self):
-        """Test that negative engagement counts raise validation error."""
-        with pytest.raises(ValueError):
-            TwitterData(
-                id="123",
-                text="Test tweet",
-                created_at=datetime.now(timezone.utc),
-                user_id="user1",
-                username="testuser",
-                like_count=-1
+                screen_name="testuser",
             )
 
     def test_hashtag_extraction(self):
         """Test automatic hashtag extraction from text."""
         tweet = TwitterData(
-            id="123",
+            id_str="123",
             text="This tweet has #python #datascience #MachineLearning tags",
             created_at=datetime.now(timezone.utc),
             user_id="user1",
-            username="testuser"
+            screen_name="testuser",
         )
 
         expected_hashtags = ["python", "datascience", "machinelearning"]
@@ -105,11 +86,11 @@ class TestTwitterData:
     def test_mention_extraction(self):
         """Test automatic mention extraction from text."""
         tweet = TwitterData(
-            id="123",
+            id_str="123",
             text="Hey @alice and @BOB, check this out!",
             created_at=datetime.now(timezone.utc),
             user_id="user1",
-            username="testuser"
+            screen_name="testuser",
         )
 
         expected_mentions = ["alice", "bob"]
@@ -118,41 +99,24 @@ class TestTwitterData:
     def test_url_extraction(self):
         """Test automatic URL extraction from text."""
         tweet = TwitterData(
-            id="123",
+            id_str="123",
             text="Check out this link: https://example.com and http://test.org",
             created_at=datetime.now(timezone.utc),
             user_id="user1",
-            username="testuser"
+            screen_name="testuser",
         )
 
         expected_urls = ["https://example.com", "http://test.org"]
         assert tweet.urls == expected_urls
 
-    def test_engagement_score_calculation(self):
-        """Test engagement score calculation."""
-        tweet = TwitterData(
-            id="123",
-            text="Test tweet",
-            created_at=datetime.now(timezone.utc),
-            user_id="user1",
-            username="testuser",
-            like_count=10,
-            retweet_count=5,
-            reply_count=3,
-            quote_count=2
-        )
-
-        # Expected: 10*1.0 + 5*2.0 + 3*1.5 + 2*2.5 = 10 + 10 + 4.5 + 5 = 29.5
-        assert tweet.get_engagement_score() == 29.5
-
     def test_clean_text_method(self):
         """Test text cleaning functionality."""
         tweet = TwitterData(
-            id="123",
+            id_str="123",
             text="Hey @user check https://example.com #hashtag multiple   spaces",
             created_at=datetime.now(timezone.utc),
             user_id="user1",
-            username="testuser"
+            screen_name="testuser",
         )
 
         clean_text = tweet.get_clean_text()
@@ -161,15 +125,15 @@ class TestTwitterData:
     def test_json_serialization(self):
         """Test that TwitterData can be serialized to JSON."""
         tweet = TwitterData(
-            id="123",
+            id_str="123",
             text="Test tweet",
             created_at=datetime.now(timezone.utc),
             user_id="user1",
-            username="testuser"
+            screen_name="testuser",
         )
 
         json_data = tweet.model_dump()
-        assert "id" in json_data
+        assert "id_str" in json_data
         assert "text" in json_data
         assert "created_at" in json_data
 
@@ -182,14 +146,14 @@ class TestTwitterDataCollection:
         """Create sample tweets for testing."""
         return [
             TwitterData(
-                id=str(i),
+                id_str=str(i),
                 text=f"Test tweet {i} #test",
-                created_at=datetime(2024, 1, i, tzinfo=timezone.utc),  # Start from day 1
+                created_at=datetime(
+                    2024, 1, i, tzinfo=timezone.utc
+                ),  # Start from day 1
                 user_id=f"user{i}",
-                username=f"testuser{i}",
-                like_count=i * 2,
-                retweet_count=i,
-                lang="en"
+                screen_name=f"testuser{i}",
+                lang="en",
             )
             for i in range(1, 6)  # 5 tweets, days 1-5
         ]
@@ -237,21 +201,6 @@ class TestTwitterDataCollection:
         expected_users = ["testuser1", "testuser2", "testuser3", "testuser4", "testuser5"]
         assert set(users) == set(expected_users)
 
-    def test_get_total_engagement(self, sample_tweets):
-        """Test total engagement calculation."""
-        collection = TwitterDataCollection(
-            tweets=sample_tweets,
-            collection_name="test_collection"
-        )
-
-        engagement = collection.get_total_engagement()
-
-        # Expected: likes = 2+4+6+8+10 = 30, retweets = 1+2+3+4+5 = 15
-        assert engagement["total_likes"] == 30
-        assert engagement["total_retweets"] == 15
-        assert engagement["total_replies"] == 0
-        assert engagement["total_quotes"] == 0
-
     def test_get_most_common_hashtags(self, sample_tweets):
         """Test hashtag frequency analysis."""
         collection = TwitterDataCollection(
@@ -282,12 +231,12 @@ class TestTwitterDataCollection:
         """Test language filtering."""
         # Add a Spanish tweet
         spanish_tweet = TwitterData(
-            id="6",
+            id_str="6",
             text="Tweet en español",
             created_at=datetime.now(timezone.utc),
             user_id="user6",
-            username="testuser6",
-            lang="es"
+            screen_name="testuser6",
+            lang="es",
         )
         sample_tweets.append(spanish_tweet)
 
@@ -387,3 +336,115 @@ class TestSOMTrainingConfig:
         assert config.include_engagement_features is True
         assert config.include_text_features is False
         assert config.include_network_features is True
+
+    def test_from_yaml_valid_config(self, tmp_path):
+        """Test loading configuration from a valid YAML file."""
+        # Create a temporary YAML config file
+        config_content = """
+som:
+  x_dim: 20
+  y_dim: 15
+  learning_rate: 0.05
+  neighborhood_function: "bubble"
+  topology: "hexagonal"
+  activation_distance: "manhattan"
+  num_iterations: 2000
+
+preprocessing:
+  normalize_features: false
+  use_pca: true
+  pca_components: 25
+
+features:
+  include_temporal_features: true
+  include_engagement_features: false
+  include_text_features: true
+  include_network_features: false
+"""
+        config_file = tmp_path / "test_config.yaml"
+        config_file.write_text(config_content)
+
+        # Load config from YAML
+        config = SOMTrainingConfig.from_yaml(config_file)
+
+        # Verify all values were loaded correctly
+        assert config.x_dim == 20
+        assert config.y_dim == 15
+        assert config.learning_rate == 0.05
+        assert config.neighborhood_function == "bubble"
+        assert config.topology == "hexagonal"
+        assert config.activation_distance == "manhattan"
+        assert config.num_iterations == 2000
+        assert config.normalize_features is False
+        assert config.use_pca is True
+        assert config.pca_components == 25
+        assert config.include_temporal_features is True
+        assert config.include_engagement_features is False
+        assert config.include_text_features is True
+        assert config.include_network_features is False
+
+    def test_from_yaml_partial_config(self, tmp_path):
+        """Test loading configuration with partial YAML (uses defaults for missing values)."""
+        config_content = """
+som:
+  x_dim: 25
+  learning_rate: 0.2
+
+features:
+  include_text_features: false
+"""
+        config_file = tmp_path / "partial_config.yaml"
+        config_file.write_text(config_content)
+
+        # Load config from YAML
+        config = SOMTrainingConfig.from_yaml(config_file)
+
+        # Verify specified values
+        assert config.x_dim == 25
+        assert config.learning_rate == 0.2
+        assert config.include_text_features is False
+
+        # Verify defaults are used for unspecified values
+        assert config.y_dim == 10  # default
+        assert config.neighborhood_function == "gaussian"  # default
+        assert config.include_temporal_features is True  # default
+
+    def test_from_yaml_file_not_found(self):
+        """Test that FileNotFoundError is raised for non-existent file."""
+        with pytest.raises(FileNotFoundError):
+            SOMTrainingConfig.from_yaml("non_existent_config.yaml")
+
+    def test_to_yaml(self, tmp_path):
+        """Test saving configuration to YAML file."""
+        # Create a config with custom values
+        config = SOMTrainingConfig(
+            x_dim=30,
+            y_dim=20,
+            learning_rate=0.15,
+            neighborhood_function="triangle",
+            use_pca=True,
+            pca_components=40,
+            include_engagement_features=False,
+        )
+
+        # Save to YAML
+        config_file = tmp_path / "saved_config.yaml"
+        config.to_yaml(config_file)
+
+        # Verify file was created
+        assert config_file.exists()
+
+        # Load back and verify values match
+        loaded_config = SOMTrainingConfig.from_yaml(config_file)
+        assert loaded_config.x_dim == config.x_dim
+        assert loaded_config.y_dim == config.y_dim
+        assert loaded_config.learning_rate == config.learning_rate
+        assert (
+            loaded_config.neighborhood_function == config.neighborhood_function
+        )
+        assert loaded_config.use_pca == config.use_pca
+        assert loaded_config.pca_components == config.pca_components
+        assert (
+            loaded_config.include_engagement_features
+            == config.include_engagement_features
+        )

@@ -249,8 +249,42 @@ sample = collection.sample(n=100, random_state=42)
 
 ## 🔧 Configuration
 
+### YAML Configuration Files
+
+The project now supports YAML configuration files for easy parameter management. Configuration files are located in the `config/` directory:
+
+```python
+# Load configuration from YAML file
+from src.twitter_som.models import SOMTrainingConfig
+
+config = SOMTrainingConfig.from_yaml("config/config.yaml")
+```
+
+#### Available Configurations
+
+- **`config/config.yaml`** - Default balanced settings
+- **`config/fast_training_config.yaml`** - Quick prototyping (8x8 grid, 500 iterations)
+- **`config/high_performance_config.yaml`** - Detailed analysis (20x20 grid, 3000 iterations)
+- **`config/text_only_config.yaml`** - Text-focused analysis with cosine distance
+
+#### Custom Configurations
+
+Create custom configurations by copying and modifying existing files:
+
+```bash
+cp config/config.yaml config/my_config.yaml
+# Edit my_config.yaml with your settings
+```
+
+Save configurations programmatically:
+
+```python
+config = SOMTrainingConfig(x_dim=25, y_dim=25, learning_rate=0.08)
+config.to_yaml("config/my_saved_config.yaml")
+```
+
 ### SOM Training Configuration
-Comprehensive configuration for SOM training:
+Comprehensive configuration for SOM training (programmatic approach):
 
 ```python
 config = SOMTrainingConfig(
@@ -277,6 +311,8 @@ config = SOMTrainingConfig(
     include_network_features=True    # Network-based features
 )
 ```
+
+For detailed configuration documentation, see [`config/README.md`](config/README.md).
 
 ## 🧪 Testing (TDD Approach)
 

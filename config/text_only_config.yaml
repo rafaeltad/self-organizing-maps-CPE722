@@ -1,0 +1,22 @@
+# Text-Only Analysis Configuration
+# Optimized for text-based feature analysis only
+
+som:
+  x_dim: 12
+  y_dim: 12
+  learning_rate: 0.1
+  neighborhood_function: "gaussian"
+  topology: "rectangular"
+  activation_distance: "cosine"    # Cosine distance good for text features
+  num_iterations: 1200
+
+preprocessing:
+  normalize_features: true
+  use_pca: true                    # PCA helpful for text feature dimensionality
+  pca_components: 50
+
+features:
+  include_temporal_features: false # Focus only on text
+  include_engagement_features: false
+  include_text_features: true     # Only text features enabled
+  include_network_features: false

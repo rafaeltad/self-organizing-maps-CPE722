@@ -16,16 +16,16 @@ from sklearn.decomposition import PCA
 import nltk
 from textblob import TextBlob
 
-try:
-    import nltk
-    nltk.download('stopwords', quiet=True)
-    nltk.download('punkt', quiet=True)
-    nltk.download('vader_lexicon', quiet=True)
-    from nltk.corpus import stopwords
-    from nltk.sentiment import SentimentIntensityAnalyzer
-    NLTK_AVAILABLE = True
-except ImportError:
-    NLTK_AVAILABLE = False
+
+import nltk
+
+nltk.download("stopwords", quiet=True)
+nltk.download("punkt", quiet=True)
+nltk.download("vader_lexicon", quiet=True)
+from nltk.corpus import stopwords
+from nltk.sentiment import SentimentIntensityAnalyzer
+
+NLTK_AVAILABLE = True
 
 from .models import TwitterData, TwitterDataCollection, SOMTrainingConfig
 
@@ -53,9 +53,9 @@ class TwitterPreprocessor:
         self.pca = PCA(n_components=config.pca_components) if config.use_pca else None
         self.tfidf_vectorizer = TfidfVectorizer(
             max_features=100,  # Limit features for SOM
-            stop_words='english',
+            stop_words=stopwords.words("portuguese"),
             ngram_range=(1, 2),
-            min_df=2
+            min_df=2,
         )
 
         # Initialize sentiment analyzer if available
@@ -134,47 +134,17 @@ class TwitterPreprocessor:
         """
         Extract engagement features from tweets.
 
+        NOTE: Engagement features have been removed from the TwitterData model.
+        This method now returns an empty feature array.
+
         Args:
             tweets: List of tweet data
 
         Returns:
-            Engagement features array
+            Empty engagement features array
         """
-        features = []
-
-        for tweet in tweets:
-            tweet_features = []
-
-            # Raw engagement counts
-            tweet_features.extend([
-                tweet.like_count,
-                tweet.retweet_count,
-                tweet.reply_count,
-                tweet.quote_count
-            ])
-
-            # Engagement ratios (avoid division by zero)
-            total_engagement = max(1, tweet.like_count + tweet.retweet_count +
-                                 tweet.reply_count + tweet.quote_count)
-
-            tweet_features.extend([
-                tweet.like_count / total_engagement,
-                tweet.retweet_count / total_engagement,
-                tweet.reply_count / total_engagement,
-                tweet.quote_count / total_engagement
-            ])
-
-            # Composite engagement score
-            tweet_features.append(tweet.get_engagement_score())
-
-            # Engagement velocity (engagement per hour since creation)
-            # For simplicity, use a placeholder calculation
-            hours_since_creation = 24  # Placeholder
-            tweet_features.append(total_engagement / max(1, hours_since_creation))
-
-            features.append(tweet_features)
-
-        return np.array(features)
+        # Return empty features since engagement metrics have been removed
+        return np.array([]).reshape(len(tweets), 0)
 
     def extract_text_features(self, tweets: List[TwitterData]) -> np.ndarray:
         """
@@ -246,13 +216,22 @@ class TwitterPreprocessor:
                 ])
             else:
                 # Use TextBlob as fallback
-                blob = TextBlob(text)
-                text_features.extend([
-                    max(0, blob.sentiment.polarity),  # Positive sentiment
-                    1 - abs(blob.sentiment.polarity),  # Neutral sentiment
-                    max(0, -blob.sentiment.polarity),  # Negative sentiment
-                    blob.sentiment.polarity  # Compound sentiment
-                ])
+                try:
+                    blob = TextBlob(text)
+                    sentiment = blob.sentiment
+                    polarity_value = sentiment.polarity  # type: ignore
+                except Exception:
+                    # Fallback if TextBlob fails
+                    polarity_value = 0.0
+
+                text_features.extend(
+                    [
+                        max(0, polarity_value),  # Positive sentiment
+                        1 - abs(polarity_value),  # Neutral sentiment
+                        max(0, -polarity_value),  # Negative sentiment
+                        polarity_value,  # Compound sentiment
+                    ]
+                )
 
             # Language diversity (placeholder)
             text_features.append(1.0 if tweet.lang == 'en' else 0.5)
@@ -261,7 +240,9 @@ class TwitterPreprocessor:
 
         # Combine TF-IDF with additional features
         additional_array = np.array(additional_features)
-        combined_features = np.hstack([tfidf_features.toarray(), additional_array])
+        combined_features = np.hstack(
+            [np.asarray(tfidf_features.todense()), additional_array]
+        )
 
         return combined_features
 
@@ -310,10 +291,9 @@ class TwitterPreprocessor:
                 int(len(tweet.urls) > 0),  # Has URLs
             ])
 
-            # User influence proxy (engagement per tweet)
-            avg_engagement = (tweet.like_count + tweet.retweet_count +
-                            tweet.reply_count + tweet.quote_count) / max(1, user_tweet_counts[user])
-            network_features.append(avg_engagement)
+            # User activity proxy (tweets per user)
+            user_activity = user_tweet_counts[user]
+            network_features.append(user_activity)
 
             features.append(network_features)
 

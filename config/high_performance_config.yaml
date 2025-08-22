@@ -1,0 +1,22 @@
+# High-Performance SOM Configuration
+# Optimized for detailed analysis with larger datasets
+
+som:
+  x_dim: 20                        # Larger grid for more detailed clustering
+  y_dim: 20
+  learning_rate: 0.05              # Lower learning rate for fine-tuning
+  neighborhood_function: "gaussian"
+  topology: "hexagonal"            # Hexagonal topology for better neighbor relationships
+  activation_distance: "euclidean"
+  num_iterations: 3000             # More iterations for better convergence
+
+preprocessing:
+  normalize_features: true
+  use_pca: true                    # Enable PCA for high-dimensional data
+  pca_components: 75               # Reduce dimensionality while preserving information
+
+features:
+  include_temporal_features: true
+  include_engagement_features: false
+  include_text_features: true
+  include_network_features: true

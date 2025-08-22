@@ -1,0 +1,62 @@
+# SOM Training Configuration
+# Configuration file for Self-Organizing Map (SOM) training parameters
+
+# SOM Grid Dimensions
+som:
+  # Map dimensions (must be positive integers)
+  x_dim: 15                        # SOM width (grid width)
+  y_dim: 15                        # SOM height (grid height)
+
+  # Training Parameters
+  learning_rate: 0.1               # Initial learning rate (0 < value <= 1)
+  neighborhood_function: "gaussian" # Neighborhood function type
+  topology: "rectangular"         # SOM topology type
+  activation_distance: "euclidean" # Distance metric for activation
+
+  # Training Iterations
+  num_iterations: 1500             # Number of training iterations (must be positive)
+
+# Preprocessing Configuration
+preprocessing:
+  # Feature normalization and dimensionality reduction
+  normalize_features: true         # Whether to normalize input features
+  use_pca: false                  # Whether to apply PCA before SOM training
+  pca_components: null            # Number of PCA components (if use_pca is true)
+
+# Feature Selection
+features:
+  # Control which feature types to include in the analysis
+  include_temporal_features: true  # Include time-based features (timestamps, etc.)
+  include_engagement_features: false # Include engagement metrics (likes, retweets, etc.)
+  include_text_features: true     # Include text-based features (TF-IDF, sentiment)
+  include_network_features: true  # Include network-based features (user connections)
+
+# Alternative configurations for different use cases
+# Uncomment and modify as needed:
+
+# # High-resolution SOM for detailed analysis
+# som:
+#   x_dim: 20
+#   y_dim: 20
+#   learning_rate: 0.05
+#   num_iterations: 2000
+
+# # Fast training configuration
+# som:
+#   x_dim: 10
+#   y_dim: 10
+#   learning_rate: 0.2
+#   num_iterations: 500
+
+# # PCA-enabled configuration for high-dimensional data
+# preprocessing:
+#   normalize_features: true
+#   use_pca: true
+#   pca_components: 50
+
+# # Text-only analysis
+# features:
+#   include_temporal_features: false
+#   include_engagement_features: false
+#   include_text_features: true
+#   include_network_features: false
