@@ -71,13 +71,14 @@ class TestSOMVisualizer:
         # Mock training collection
         tweets = [
             TwitterData(
-                id=str(i),
+                id_str=str(i),
                 text=f"Test tweet {i}",
-                created_at=datetime(2024, 1, i+1, 10+i, 0, 0, tzinfo=timezone.utc),
+                created_at=datetime(
+                    2024, 1, i + 1, 10 + i, 0, 0, tzinfo=timezone.utc
+                ),
                 user_id=f"user{i}",
-                username=f"user{i}",
-                like_count=i*2,
-                lang="en"
+                screen_name=f"user{i}",
+                lang="en",
             )
             for i in range(5)
         ]
@@ -138,18 +139,19 @@ class TestSOMVisualizer:
             visualizer = SOMVisualizer(untrained_analyzer)
             assert visualizer.analyzer == untrained_analyzer
 
-    @patch('matplotlib.pyplot.show')
-    @patch('matplotlib.pyplot.savefig')
-    def test_plot_som_topology(self, mock_savefig, mock_show, mock_analyzer):
+    @patch("mlflow.log_figure")
+    def test_plot_som_topology(self, mock_log_figure, mock_analyzer):
         """Test SOM topology plotting."""
         visualizer = SOMVisualizer(mock_analyzer)
 
-        # Should not raise errors
-        visualizer.plot_som_topology(save_path="test_topology.png")
+        # Should not raise any exceptions
+        visualizer.plot_som_topology()
 
-        # Verify save was called
-        mock_savefig.assert_called_once_with("test_topology.png", dpi=300, bbox_inches='tight')
-        # Note: plt.show() is intentionally not called (non-interactive mode)
+        # Verify mlflow log was called
+        mock_log_figure.assert_called_once()
+        # Check the call was made with correct filename
+        args, kwargs = mock_log_figure.call_args
+        assert args[1] == "som_topology.png"
 
     def test_plot_som_topology_untrained(self):
         """Test error when plotting with untrained analyzer."""
@@ -169,11 +171,9 @@ class TestSOMVisualizer:
         visualizer = SOMVisualizer(mock_analyzer)
 
         # Should not raise errors
-        visualizer.plot_cluster_analysis(save_path="test_cluster.png")
+        visualizer.plot_cluster_analysis()
 
-        # Verify save was called
-        mock_savefig.assert_called_once_with("test_cluster.png", dpi=300, bbox_inches='tight')
-        # Note: plt.show() is intentionally not called (non-interactive mode)
+        # Note: No more local saving, only MLflow logging
 
     def test_plot_cluster_analysis_no_clusters(self, mock_analyzer):
         """Test error when no clusters are available."""
@@ -184,18 +184,19 @@ class TestSOMVisualizer:
         with pytest.raises(ValueError, match="No cluster data available"):
             visualizer.plot_cluster_analysis()
 
-    @patch('matplotlib.pyplot.show')
-    @patch('matplotlib.pyplot.savefig')
-    def test_plot_tweet_distribution(self, mock_savefig, mock_show, mock_analyzer):
+    @patch("mlflow.log_figure")
+    def test_plot_tweet_distribution(self, mock_log_figure, mock_analyzer):
         """Test tweet distribution plotting."""
         visualizer = SOMVisualizer(mock_analyzer)
 
         # Should not raise errors
-        visualizer.plot_tweet_distribution(save_path="test_distribution.png")
+        visualizer.plot_tweet_distribution()
 
-        # Verify save was called
-        mock_savefig.assert_called_once_with("test_distribution.png", dpi=300, bbox_inches='tight')
-        # Note: plt.show() is intentionally not called (non-interactive mode)
+        # Verify mlflow log was called
+        mock_log_figure.assert_called_once()
+        # Check the call was made with correct filename
+        args, kwargs = mock_log_figure.call_args
+        assert args[1] == "tweet_distribution.png"
 
     def test_plot_tweet_distribution_no_clusters(self, mock_analyzer):
         """Test error when plotting distribution with no clusters."""
@@ -206,17 +207,25 @@ class TestSOMVisualizer:
         with pytest.raises(ValueError, match="No cluster data available"):
             visualizer.plot_tweet_distribution()
 
-    @patch('twitter_som.visualizer.PLOTLY_AVAILABLE', True)
-    @patch('plotly.graph_objects.Figure.write_html')
-    def test_create_interactive_visualization(self, mock_write_html, mock_analyzer):
+    @patch("twitter_som.visualizer.PLOTLY_AVAILABLE", True)
+    @patch("plotly.graph_objects.Figure.write_html")
+    @patch("mlflow.log_artifact")
+    @patch("os.remove")
+    def test_create_interactive_visualization(
+        self, mock_remove, mock_log_artifact, mock_write_html, mock_analyzer
+    ):
         """Test interactive visualization creation."""
         visualizer = SOMVisualizer(mock_analyzer)
 
         # Should not raise errors
-        visualizer.create_interactive_visualization("test_interactive.html")
+        visualizer.create_interactive_visualization()
 
         # Verify HTML was written
-        mock_write_html.assert_called_once_with("test_interactive.html")
+        mock_write_html.assert_called_once()
+        # Verify mlflow artifact logging
+        mock_log_artifact.assert_called_once()
+        # Verify file cleanup
+        mock_remove.assert_called_once()
 
     @patch('twitter_som.visualizer.PLOTLY_AVAILABLE', False)
     def test_create_interactive_visualization_no_plotly(self, mock_analyzer):
@@ -238,16 +247,24 @@ class TestSOMVisualizer:
             with pytest.raises(ValueError, match="Analyzer must be trained"):
                 visualizer.create_interactive_visualization()
 
-    @patch('builtins.open', new_callable=MagicMock)
-    def test_generate_report(self, mock_open, mock_analyzer):
+    @patch("builtins.open", new_callable=MagicMock)
+    @patch("mlflow.log_artifact")
+    @patch("os.remove")
+    def test_generate_report(
+        self, mock_remove, mock_log_artifact, mock_open, mock_analyzer
+    ):
         """Test report generation."""
         visualizer = SOMVisualizer(mock_analyzer)
 
         # Should not raise errors
-        visualizer.generate_report("test_report.txt")
+        visualizer.generate_report()
 
         # Verify file was opened for writing
-        mock_open.assert_called_once_with("test_report.txt", 'w')
+        mock_open.assert_called_once()
+        # Verify mlflow artifact logging
+        mock_log_artifact.assert_called_once()
+        # Verify file cleanup
+        mock_remove.assert_called_once()
 
         # Verify content was written
         mock_file = mock_open.return_value.__enter__.return_value

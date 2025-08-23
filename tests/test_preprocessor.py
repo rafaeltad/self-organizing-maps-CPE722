@@ -41,36 +41,33 @@ class TestTwitterPreprocessor:
         """Create a sample collection for testing."""
         tweets = [
             TwitterData(
-                id="1",
+                id_str="1",
                 text="This is a test tweet about #python programming @user1",
-                created_at=datetime(2024, 1, 1, 10, 30, 0, tzinfo=timezone.utc),
+                created_at=datetime(
+                    2024, 1, 1, 10, 30, 0, tzinfo=timezone.utc
+                ),
                 user_id="user1",
-                username="testuser1",
-                like_count=10,
-                retweet_count=5,
-                lang="en"
+                screen_name="testuser1",
+                lang="en",
             ),
             TwitterData(
-                id="2",
+                id_str="2",
                 text="Another tweet with #datascience and machine learning content",
-                created_at=datetime(2024, 1, 1, 14, 45, 0, tzinfo=timezone.utc),
+                created_at=datetime(
+                    2024, 1, 1, 14, 45, 0, tzinfo=timezone.utc
+                ),
                 user_id="user2",
-                username="testuser2",
-                like_count=20,
-                retweet_count=8,
-                reply_count=3,
-                lang="en"
+                screen_name="testuser2",
+                lang="en",
             ),
             TwitterData(
-                id="3",
+                id_str="3",
                 text="Simple tweet without hashtags or mentions",
                 created_at=datetime(2024, 1, 2, 9, 15, 0, tzinfo=timezone.utc),
                 user_id="user1",
-                username="testuser1",
-                like_count=5,
-                quote_count=2,
-                lang="en"
-            )
+                screen_name="testuser1",
+                lang="en",
+            ),
         ]
 
         return TwitterDataCollection(
@@ -122,20 +119,11 @@ class TestTwitterPreprocessor:
         """Test engagement feature extraction."""
         features = preprocessor.extract_engagement_features(sample_collection.tweets)
 
-        # Should have 10 engagement features per tweet
-        assert features.shape == (3, 10)
+        # Should have 0 engagement features per tweet since TwitterData doesn't have engagement fields
+        assert features.shape == (3, 0)
 
-        # Check first tweet features
-        # Raw counts: like=10, retweet=5, reply=0, quote=0
-        assert features[0, 0] == 10  # like_count
-        assert features[0, 1] == 5   # retweet_count
-        assert features[0, 2] == 0   # reply_count
-        assert features[0, 3] == 0   # quote_count
-
-        # Check ratios sum to 1
-        total_engagement = 10 + 5 + 0 + 0
-        assert abs(features[0, 4] - (10/total_engagement)) < 1e-6  # like_ratio
-        assert abs(features[0, 5] - (5/total_engagement)) < 1e-6   # retweet_ratio
+        # No features to check since shape is (3, 0)
+        assert features.size == 0
 
     def test_extract_text_features(self, preprocessor, sample_collection):
         """Test text feature extraction."""
@@ -168,7 +156,10 @@ class TestTwitterPreprocessor:
 
         # Should have features for all enabled types
         assert features.shape[0] == 3  # 3 tweets
-        assert features.shape[1] > 20  # Should have many features
+        # Should have temporal (5) + engagement (0) + text (variable) + network (3) features
+        assert (
+            features.shape[1] > 5
+        )  # Should have at least temporal + network features
         assert len(feature_names) == features.shape[1]
 
         # Check that preprocessor is fitted
@@ -190,21 +181,20 @@ class TestTwitterPreprocessor:
         # Create simple collection
         tweets = [
             TwitterData(
-                id="1",
+                id_str="1",
                 text="Test tweet",
                 created_at=datetime.now(timezone.utc),
                 user_id="user1",
-                username="testuser1",
-                like_count=10
+                screen_name="testuser1",
             )
         ]
         collection = TwitterDataCollection(tweets=tweets, collection_name="test")
 
         features, feature_names = preprocessor.fit_transform(collection)
 
-        # Should have 5 temporal + 10 engagement = 15 features
-        assert features.shape == (1, 15)
-        assert len(feature_names) == 15
+        # Should have 5 temporal + 0 engagement = 5 features
+        assert features.shape == (1, 5)
+        assert len(feature_names) == 5
 
     def test_no_features_selected_error(self):
         """Test error when no features are selected."""
@@ -219,11 +209,11 @@ class TestTwitterPreprocessor:
 
         tweets = [
             TwitterData(
-                id="1",
+                id_str="1",
                 text="Test tweet",
                 created_at=datetime.now(timezone.utc),
                 user_id="user1",
-                username="testuser1"
+                screen_name="testuser1",
             )
         ]
         collection = TwitterDataCollection(tweets=tweets, collection_name="test")
@@ -243,12 +233,11 @@ class TestTwitterPreprocessor:
 
         # Create new collection
         new_tweet = TwitterData(
-            id="4",
+            id_str="4",
             text="New tweet for testing transform",
             created_at=datetime.now(timezone.utc),
             user_id="user3",
-            username="testuser3",
-            like_count=15
+            screen_name="testuser3",
         )
         new_collection = TwitterDataCollection(tweets=[new_tweet], collection_name="new_test")
 
@@ -274,23 +263,19 @@ class TestTwitterPreprocessor:
         # Create collection with varied values
         tweets = [
             TwitterData(
-                id="1",
+                id_str="1",
                 text="Test 1",
                 created_at=datetime(2024, 1, 1, 10, 0, 0, tzinfo=timezone.utc),
                 user_id="user1",
-                username="user1",
-                like_count=1000,  # High value
-                retweet_count=100
+                screen_name="user1",
             ),
             TwitterData(
-                id="2",
+                id_str="2",
                 text="Test 2",
                 created_at=datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
                 user_id="user2",
-                username="user2",
-                like_count=5,     # Low value
-                retweet_count=1
-            )
+                screen_name="user2",
+            ),
         ]
         collection = TwitterDataCollection(tweets=tweets, collection_name="test")
 
@@ -314,26 +299,26 @@ class TestTwitterPreprocessor:
 
         tweets = [
             TwitterData(
-                id="1",
+                id_str="1",
                 text="I love this amazing product!",
                 created_at=datetime.now(timezone.utc),
                 user_id="user1",
-                username="user1"
+                screen_name="user1",
             ),
             TwitterData(
-                id="2",
+                id_str="2",
                 text="This is terrible and awful!",
                 created_at=datetime.now(timezone.utc),
                 user_id="user2",
-                username="user2"
+                screen_name="user2",
             ),
             TwitterData(
-                id="3",
+                id_str="3",
                 text="It's okay, nothing special really.",
                 created_at=datetime.now(timezone.utc),
                 user_id="user3",
-                username="user3"
-            )
+                screen_name="user3",
+            ),
         ]
         collection = TwitterDataCollection(tweets=tweets, collection_name="test")
 
@@ -366,25 +351,25 @@ class TestTwitterPreprocessor:
         # Create tweets with text that have some overlapping words after cleaning
         tweets = [
             TwitterData(
-                id="1",
+                id_str="1",
                 text="amazing content here",  # Simple text with real words
                 created_at=datetime.now(timezone.utc),
                 user_id="user1",
-                username="user1",
+                screen_name="user1",
             ),
             TwitterData(
-                id="2",
+                id_str="2",
                 text="great content today",  # Overlapping "content" word
                 created_at=datetime.now(timezone.utc),
                 user_id="user2",
-                username="user2",
+                screen_name="user2",
             ),
             TwitterData(
-                id="3",
+                id_str="3",
                 text="wonderful day here",  # Overlapping "here" word
                 created_at=datetime.now(timezone.utc),
                 user_id="user3",
-                username="user3",
+                screen_name="user3",
             ),
         ]
         collection = TwitterDataCollection(tweets=tweets, collection_name="test")
@@ -411,12 +396,11 @@ class TestTwitterPreprocessor:
 
         tweets = [
             TwitterData(
-                id=str(i),
+                id_str=str(i),
                 text=f"Test tweet {i}",
                 created_at=datetime.now(timezone.utc),
                 user_id=f"user{i}",
-                username=f"user{i}",
-                like_count=i * 10
+                screen_name=f"user{i}",
             )
             for i in range(10)  # Need enough samples for PCA
         ]
