@@ -324,11 +324,22 @@ class TwitterPreprocessor:
         if self.config.include_engagement_features:
             engagement_features = self.extract_engagement_features(tweets)
             all_features.append(engagement_features)
-            feature_names.extend([
-                'like_count', 'retweet_count', 'reply_count', 'quote_count',
-                'like_ratio', 'retweet_ratio', 'reply_ratio', 'quote_ratio',
-                'engagement_score', 'engagement_velocity'
-            ])
+            # Only add feature names if there are actual engagement features
+            if engagement_features.shape[1] > 0:
+                feature_names.extend(
+                    [
+                        "like_count",
+                        "retweet_count",
+                        "reply_count",
+                        "quote_count",
+                        "like_ratio",
+                        "retweet_ratio",
+                        "reply_ratio",
+                        "quote_ratio",
+                        "engagement_score",
+                        "engagement_velocity",
+                    ]
+                )
 
         if self.config.include_text_features:
             text_features = self.extract_text_features(tweets)
