@@ -5,30 +5,28 @@ This module implements the main SOM analysis functionality using MiniSOM
 for clustering and pattern discovery in Twitter data.
 """
 
+import os
+import json
+import pickle
+import mlflow
+import logging
 import numpy as np
 import pandas as pd
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
-import pickle
-import json
-import os
+from minisom import MiniSom
 
+# Check if MiniSOM is available
 try:
     from minisom import MiniSom
     MINISOM_AVAILABLE = True
 except ImportError:
     MINISOM_AVAILABLE = False
 
-try:
-    import mlflow
-    import mlflow.sklearn
-
-    MLFLOW_AVAILABLE = True
-except ImportError:
-    MLFLOW_AVAILABLE = False
-
 from .models import TwitterData, TwitterDataCollection, SOMTrainingConfig
 from .preprocessor import TwitterPreprocessor
+
+LOGGER = logging.getLogger(__name__)
 
 
 class TwitterSOMAnalyzer:
@@ -45,17 +43,15 @@ class TwitterSOMAnalyzer:
     def __init__(
         self,
         config: SOMTrainingConfig,
-        mlflow_experiment_name: Optional[str] = None,
     ):
         """
         Initialize the SOM analyzer.
 
         Args:
             config: SOM training configuration
-            mlflow_experiment_name: Name of MLflow experiment for logging (optional)
         """
         if not MINISOM_AVAILABLE:
-            raise ImportError("MiniSOM is required but not installed. Install with: pip install minisom")
+            raise ImportError("MiniSOM is required for SOM analysis")
 
         self.config = config
         self.preprocessor = TwitterPreprocessor(config)
@@ -65,165 +61,148 @@ class TwitterSOMAnalyzer:
         self.training_collection: Optional[TwitterDataCollection] = None
         self.is_trained = False
 
-        # MLflow configuration
-        self.mlflow_experiment_name = mlflow_experiment_name
-        self.mlflow_enabled = (
-            MLFLOW_AVAILABLE and mlflow_experiment_name is not None
-        )
-
-        if self.mlflow_enabled:
-            mlflow.set_experiment(mlflow_experiment_name)
-
         # Analysis results
         self.cluster_assignments: Optional[np.ndarray] = None
         self.cluster_centers: Optional[np.ndarray] = None
         self.cluster_stats: Dict[str, Any] = {}
 
-    def train(self, collection: TwitterDataCollection, verbose: bool = True) -> Dict[str, Any]:
+    def train(
+        self, collection: TwitterDataCollection, verbose: bool = True
+    ) -> Dict[str, Any]:
         """
         Train the SOM on Twitter data.
 
         Args:
             collection: Twitter data collection for training
-            verbose: Whether to print training progress
+            verbose: Whether to LOGGER.info training progress
 
         Returns:
             Training statistics and metrics
         """
-        # Start MLflow run if enabled
-        if self.mlflow_enabled:
-            mlflow.start_run()
 
-        try:
-            if verbose:
-                print(f"Preprocessing {len(collection.tweets)} tweets...")
+        if verbose:
+            LOGGER.info(f"Preprocessing {len(collection.tweets)} tweets...")
 
-            # Preprocess the data
-            features, feature_names = self.preprocessor.fit_transform(
-                collection
-            )
-            self.training_data = features
-            self.training_collection = collection
-            self.feature_names = feature_names
+        # Preprocess the data
+        features, feature_names = self.preprocessor.fit_transform(collection)
+        self.training_data = features
+        self.training_collection = collection
+        self.feature_names = feature_names
 
-            if verbose:
-                print(f"Extracted {features.shape[1]} features")
+        if verbose:
+            LOGGER.info(f"Extracted {features.shape[1]} features")
 
-            # Log training configuration to MLflow
-            if self.mlflow_enabled:
-                mlflow.log_params(
-                    {
-                        "x_dim": self.config.x_dim,
-                        "y_dim": self.config.y_dim,
-                        "learning_rate": self.config.learning_rate,
-                        "num_iterations": self.config.num_iterations,
-                        "normalize_features": self.config.normalize_features,
-                        "use_pca": self.config.use_pca,
-                        "include_temporal_features": self.config.include_temporal_features,
-                        "include_engagement_features": self.config.include_engagement_features,
-                        "include_text_features": self.config.include_text_features,
-                        "include_network_features": self.config.include_network_features,
-                        "neighborhood_function": self.config.neighborhood_function,
-                        "topology": self.config.topology,
-                        "activation_distance": self.config.activation_distance,
-                        "num_samples": len(collection.tweets),
-                        "num_features": features.shape[1],
-                        "som_grid_size": self.config.x_dim * self.config.y_dim,
-                    }
-                )
+        # Log training configuration to MLflow
+        mlflow.log_params(
+            {
+                "x_dim": self.config.x_dim,
+                "y_dim": self.config.y_dim,
+                "learning_rate": self.config.learning_rate,
+                "num_iterations": self.config.num_iterations,
+                "normalize_features": self.config.normalize_features,
+                "use_pca": self.config.use_pca,
+                "include_temporal_features": self.config.include_temporal_features,
+                "include_engagement_features": self.config.include_engagement_features,
+                "include_text_features": self.config.include_text_features,
+                "include_network_features": self.config.include_network_features,
+                "neighborhood_function": self.config.neighborhood_function,
+                "topology": self.config.topology,
+                "activation_distance": self.config.activation_distance,
+                "num_samples": len(collection.tweets),
+                "num_features": features.shape[1],
+                "som_grid_size": self.config.x_dim * self.config.y_dim,
+            }
+        )
 
-            # Initialize SOM
-            self.som = MiniSom(
-                x=self.config.x_dim,
-                y=self.config.y_dim,
-                input_len=features.shape[1],
-                learning_rate=self.config.learning_rate,
-                neighborhood_function=self.config.neighborhood_function,
-                topology=self.config.topology,
-                activation_distance=self.config.activation_distance,
+        # Initialize SOM
+        self.som = MiniSom(
+            x=self.config.x_dim,
+            y=self.config.y_dim,
+            input_len=features.shape[1],
+            learning_rate=self.config.learning_rate,
+            neighborhood_function=self.config.neighborhood_function,
+            topology=self.config.topology,
+            activation_distance=self.config.activation_distance,
+        )
+
+        if verbose:
+            LOGGER.info(
+                f"Initializing SOM with dimensions {self.config.x_dim}x{self.config.y_dim}"
             )
 
-            if verbose:
-                print(
-                    f"Initializing SOM with dimensions {self.config.x_dim}x{self.config.y_dim}"
-                )
+        # Initialize weights
+        self.som.pca_weights_init(features)
 
-            # Initialize weights
-            self.som.pca_weights_init(features)
-
-            if verbose:
-                print(
-                    f"Training SOM for {self.config.num_iterations} iterations..."
-                )
-
-            # Train the SOM
-            self.som.train(
-                features,
-                num_iteration=self.config.num_iterations,
-                verbose=verbose,
+        if verbose:
+            LOGGER.info(
+                f"Training SOM for {self.config.num_iterations} iterations..."
             )
 
-            self.is_trained = True
+        # Train the SOM
+        self.som.train(
+            features,
+            num_iteration=self.config.num_iterations,
+            verbose=verbose,
+        )
 
-            # Analyze the results
-            self._analyze_clusters()
+        self.is_trained = True
 
-            # Calculate training statistics
-            training_stats = self._calculate_training_stats()
+        # Analyze the results
+        self._analyze_clusters()
 
-            # Log metrics to MLflow
-            if self.mlflow_enabled:
-                mlflow.log_metrics(
-                    {
-                        "quantization_error": training_stats[
-                            "quantization_error"
-                        ],
-                        "topographic_error": training_stats[
-                            "topographic_error"
-                        ],
-                        "num_clusters": training_stats["num_clusters"],
-                        "largest_cluster_size": training_stats[
-                            "largest_cluster_size"
-                        ],
-                        "smallest_cluster_size": training_stats[
-                            "smallest_cluster_size"
-                        ],
-                        "mean_cluster_size": (
-                            training_stats["num_samples"]
-                            / training_stats["num_clusters"]
-                            if training_stats["num_clusters"] > 0
-                            else 0
-                        ),
-                        "cluster_size_std": (
-                            np.std(
-                                [
-                                    stats["size"]
-                                    for stats in self.cluster_stats.values()
-                                ]
-                            )
-                            if self.cluster_stats
-                            else 0
-                        ),
-                    }
-                )
+        # Calculate training statistics
+        training_stats = self._calculate_training_stats()
 
-            if verbose:
-                print("Training completed!")
-                print(f"Found {len(self.cluster_stats)} clusters")
-                print(
-                    f"Quantization error: {training_stats['quantization_error']:.4f}"
-                )
-                print(
-                    f"Topographic error: {training_stats['topographic_error']:.4f}"
-                )
+        # Log metrics to MLflow
+        mlflow.log_metrics(
+            {
+                "quantization_error": float(
+                    training_stats["quantization_error"]
+                ),
+                "topographic_error": float(
+                    training_stats["topographic_error"]
+                ),
+                "num_clusters": float(training_stats["num_clusters"]),
+                "largest_cluster_size": float(
+                    training_stats["largest_cluster_size"]
+                ),
+                "smallest_cluster_size": float(
+                    training_stats["smallest_cluster_size"]
+                ),
+                "mean_cluster_size": (
+                    float(
+                        training_stats["num_samples"]
+                        / training_stats["num_clusters"]
+                    )
+                    if training_stats["num_clusters"] > 0
+                    else 0.0
+                ),
+                "cluster_size_std": (
+                    float(
+                        np.std(
+                            [
+                                stats["size"]
+                                for stats in self.cluster_stats.values()
+                            ]
+                        )
+                    )
+                    if self.cluster_stats
+                    else 0.0
+                ),
+            }
+        )
 
-            return training_stats
+        if verbose:
+            LOGGER.info("Training completed!")
+            LOGGER.info(f"Found {len(self.cluster_stats)} clusters")
+            LOGGER.info(
+                f"Quantization error: {training_stats['quantization_error']:.4f}"
+            )
+            LOGGER.info(
+                f"Topographic error: {training_stats['topographic_error']:.4f}"
+            )
 
-        except Exception as e:
-            # End MLflow run if there's an error
-            if self.mlflow_enabled and mlflow.active_run():
-                mlflow.end_run(status="FAILED")
-            raise e
+        return training_stats
 
     def _analyze_clusters(self) -> None:
         """Analyze the trained SOM to identify clusters and patterns."""
@@ -231,6 +210,10 @@ class TwitterSOMAnalyzer:
             raise ValueError("SOM must be trained before analyzing clusters")
 
         # Get winner neurons for each data point
+        if self.training_data is None:
+            raise ValueError(
+                "Training data is not available for cluster analysis"
+            )
         winners = []
         for i in range(len(self.training_data)):
             winner = self.som.winner(self.training_data[i])
@@ -249,27 +232,41 @@ class TwitterSOMAnalyzer:
 
             # Find tweets in this cluster
             mask = np.all(self.cluster_assignments == cluster, axis=1)
-            cluster_tweets = [self.training_collection.tweets[j] for j in np.where(mask)[0]]
+            cluster_tweets = [
+                self.training_collection.tweets[j] for j in np.where(mask)[0]
+            ]
             cluster_features = self.training_data[mask]
 
             # Calculate cluster statistics
             stats = {
-                'size': len(cluster_tweets),
-                'coordinates': tuple(cluster),
-                'mean_features': np.mean(cluster_features, axis=0).tolist(),
-                'std_features': np.std(cluster_features, axis=0).tolist(),
-                'sample_tweets': [tweet.text for tweet in cluster_tweets[:5]],  # Sample tweets
-                'avg_engagement': np.mean([tweet.get_engagement_score() for tweet in cluster_tweets]),
-                'dominant_hashtags': self._get_dominant_hashtags(cluster_tweets),
-                'time_distribution': self._analyze_time_distribution(cluster_tweets),
-                'language_distribution': self._analyze_language_distribution(cluster_tweets)
+                "size": len(cluster_tweets),
+                "coordinates": tuple(cluster),
+                "mean_features": np.mean(cluster_features, axis=0).tolist(),
+                "std_features": np.std(cluster_features, axis=0).tolist(),
+                "sample_tweets": [
+                    tweet.text for tweet in cluster_tweets[:5]
+                ],  # Sample tweets
+                "avg_engagement": np.mean(
+                    [tweet.get_engagement_score() for tweet in cluster_tweets]
+                ),
+                "dominant_hashtags": self._get_dominant_hashtags(
+                    cluster_tweets
+                ),
+                "time_distribution": self._analyze_time_distribution(
+                    cluster_tweets
+                ),
+                "language_distribution": self._analyze_language_distribution(
+                    cluster_tweets
+                ),
             }
 
             cluster_stats[cluster_key] = stats
 
         self.cluster_stats = cluster_stats
 
-    def _get_dominant_hashtags(self, tweets: List[TwitterData], top_n: int = 5) -> List[Tuple[str, int]]:
+    def _get_dominant_hashtags(
+        self, tweets: List[TwitterData], top_n: int = 5
+    ) -> List[Tuple[str, int]]:
         """Get dominant hashtags in a cluster."""
         from collections import Counter
 
@@ -279,22 +276,27 @@ class TwitterSOMAnalyzer:
 
         return Counter(all_hashtags).most_common(top_n)
 
-    def _analyze_time_distribution(self, tweets: List[TwitterData]) -> Dict[str, Any]:
+    def _analyze_time_distribution(
+        self, tweets: List[TwitterData]
+    ) -> Dict[str, Any]:
         """Analyze temporal distribution of tweets in a cluster."""
         hours = [tweet.created_at.hour for tweet in tweets]
         days = [tweet.created_at.weekday() for tweet in tweets]
 
         return {
-            'peak_hour': max(set(hours), key=hours.count),
-            'peak_day': max(set(days), key=days.count),
-            'hour_distribution': {str(h): hours.count(h) for h in set(hours)},
-            'day_distribution': {str(d): days.count(d) for d in set(days)}
+            "peak_hour": max(set(hours), key=hours.count),
+            "peak_day": max(set(days), key=days.count),
+            "hour_distribution": {str(h): hours.count(h) for h in set(hours)},
+            "day_distribution": {str(d): days.count(d) for d in set(days)},
         }
 
-    def _analyze_language_distribution(self, tweets: List[TwitterData]) -> Dict[str, int]:
+    def _analyze_language_distribution(
+        self, tweets: List[TwitterData]
+    ) -> Dict[str, int]:
         """Analyze language distribution of tweets in a cluster."""
         languages = [tweet.lang for tweet in tweets if tweet.lang]
         from collections import Counter
+
         return dict(Counter(languages))
 
     def _calculate_training_stats(self) -> Dict[str, Any]:
@@ -310,20 +312,30 @@ class TwitterSOMAnalyzer:
 
         # Additional statistics
         stats = {
-            'quantization_error': float(quantization_error),
-            'topographic_error': float(topographic_error),
-            'num_clusters': len(self.cluster_stats),
-            'num_features': len(self.feature_names),
-            'num_samples': len(self.training_data),
-            'som_dimensions': (self.config.x_dim, self.config.y_dim),
-            'largest_cluster_size': max(stats['size'] for stats in self.cluster_stats.values()) if self.cluster_stats else 0,
-            'smallest_cluster_size': min(stats['size'] for stats in self.cluster_stats.values()) if self.cluster_stats else 0,
-            'training_config': self.config.model_dump()
+            "quantization_error": float(quantization_error),
+            "topographic_error": float(topographic_error),
+            "num_clusters": len(self.cluster_stats),
+            "num_features": len(self.feature_names),
+            "num_samples": self.training_data.shape[0],
+            "som_dimensions": (self.config.x_dim, self.config.y_dim),
+            "largest_cluster_size": (
+                max(stats["size"] for stats in self.cluster_stats.values())
+                if self.cluster_stats
+                else 0
+            ),
+            "smallest_cluster_size": (
+                min(stats["size"] for stats in self.cluster_stats.values())
+                if self.cluster_stats
+                else 0
+            ),
+            "training_config": self.config.model_dump(),
         }
 
         return stats
 
-    def predict_cluster(self, collection: TwitterDataCollection) -> List[Tuple[int, int]]:
+    def predict_cluster(
+        self, collection: TwitterDataCollection
+    ) -> List[Tuple[int, int]]:
         """
         Predict cluster assignments for new tweets.
 
@@ -365,21 +377,27 @@ class TwitterSOMAnalyzer:
         # Add additional insights
         insights = {
             **stats,
-            'feature_importance': self._get_cluster_feature_importance(cluster_id),
-            'similarity_to_other_clusters': self._calculate_cluster_similarities(cluster_id),
-            'temporal_patterns': stats['time_distribution'],
-            'content_themes': self._extract_content_themes(cluster_id)
+            "feature_importance": self._get_cluster_feature_importance(
+                cluster_id
+            ),
+            "similarity_to_other_clusters": self._calculate_cluster_similarities(
+                cluster_id
+            ),
+            "temporal_patterns": stats["time_distribution"],
+            "content_themes": self._extract_content_themes(cluster_id),
         }
 
         return insights
 
-    def _get_cluster_feature_importance(self, cluster_id: str) -> Dict[str, float]:
+    def _get_cluster_feature_importance(
+        self, cluster_id: str
+    ) -> Dict[str, float]:
         """Calculate feature importance for a specific cluster."""
         if cluster_id not in self.cluster_stats:
             return {}
 
         cluster_stats = self.cluster_stats[cluster_id]
-        mean_features = np.array(cluster_stats['mean_features'])
+        mean_features = np.array(cluster_stats["mean_features"])
 
         # Simple feature importance based on deviation from global mean
         global_mean = np.mean(self.training_data, axis=0)
@@ -389,23 +407,32 @@ class TwitterSOMAnalyzer:
         if np.max(importance) > 0:
             importance = importance / np.max(importance)
 
-        return {name: float(importance[i]) for i, name in enumerate(self.feature_names)}
+        return {
+            name: float(importance[i])
+            for i, name in enumerate(self.feature_names)
+        }
 
-    def _calculate_cluster_similarities(self, cluster_id: str) -> Dict[str, float]:
+    def _calculate_cluster_similarities(
+        self, cluster_id: str
+    ) -> Dict[str, float]:
         """Calculate similarity to other clusters."""
         if cluster_id not in self.cluster_stats:
             return {}
 
-        cluster_features = np.array(self.cluster_stats[cluster_id]['mean_features'])
+        cluster_features = np.array(
+            self.cluster_stats[cluster_id]["mean_features"]
+        )
         similarities = {}
 
         for other_id, other_stats in self.cluster_stats.items():
             if other_id != cluster_id:
-                other_features = np.array(other_stats['mean_features'])
+                other_features = np.array(other_stats["mean_features"])
 
                 # Calculate cosine similarity
                 dot_product = np.dot(cluster_features, other_features)
-                norm_product = np.linalg.norm(cluster_features) * np.linalg.norm(other_features)
+                norm_product = np.linalg.norm(
+                    cluster_features
+                ) * np.linalg.norm(other_features)
 
                 if norm_product > 0:
                     similarity = dot_product / norm_product
@@ -419,7 +446,7 @@ class TwitterSOMAnalyzer:
             return []
 
         # Use dominant hashtags as simple theme indicators
-        hashtags = self.cluster_stats[cluster_id]['dominant_hashtags']
+        hashtags = self.cluster_stats[cluster_id]["dominant_hashtags"]
         return [hashtag for hashtag, count in hashtags]
 
     def get_all_clusters_summary(self) -> Dict[str, Any]:
@@ -428,12 +455,17 @@ class TwitterSOMAnalyzer:
             return {}
 
         summary = {
-            'total_clusters': len(self.cluster_stats),
-            'total_tweets': sum(stats['size'] for stats in self.cluster_stats.values()),
-            'cluster_sizes': {cluster_id: stats['size'] for cluster_id, stats in self.cluster_stats.items()},
-            'dominant_themes': self._get_global_themes(),
-            'temporal_overview': self._get_global_temporal_patterns(),
-            'engagement_distribution': self._get_engagement_distribution()
+            "total_clusters": len(self.cluster_stats),
+            "total_tweets": sum(
+                stats["size"] for stats in self.cluster_stats.values()
+            ),
+            "cluster_sizes": {
+                cluster_id: stats["size"]
+                for cluster_id, stats in self.cluster_stats.items()
+            },
+            "dominant_themes": self._get_global_themes(),
+            "temporal_overview": self._get_global_temporal_patterns(),
+            "engagement_distribution": self._get_engagement_distribution(),
         }
 
         return summary
@@ -444,7 +476,7 @@ class TwitterSOMAnalyzer:
 
         all_hashtags = []
         for stats in self.cluster_stats.values():
-            for hashtag, count in stats['dominant_hashtags']:
+            for hashtag, count in stats["dominant_hashtags"]:
                 all_hashtags.extend([hashtag] * count)
 
         return Counter(all_hashtags).most_common(10)
@@ -461,105 +493,67 @@ class TwitterSOMAnalyzer:
         from collections import Counter
 
         return {
-            'peak_hours': Counter(all_hours).most_common(5),
-            'peak_days': Counter(all_days).most_common(7)
+            "peak_hours": Counter(all_hours).most_common(5),
+            "peak_days": Counter(all_days).most_common(7),
         }
 
     def _get_engagement_distribution(self) -> Dict[str, float]:
         """Get engagement distribution across clusters."""
-        engagements = [stats['avg_engagement'] for stats in self.cluster_stats.values()]
+        engagements = [
+            stats["avg_engagement"] for stats in self.cluster_stats.values()
+        ]
 
         return {
-            'mean': float(np.mean(engagements)),
-            'std': float(np.std(engagements)),
-            'min': float(np.min(engagements)),
-            'max': float(np.max(engagements)),
-            'median': float(np.median(engagements))
+            "mean": float(np.mean(engagements)),
+            "std": float(np.std(engagements)),
+            "min": float(np.min(engagements)),
+            "max": float(np.max(engagements)),
+            "median": float(np.median(engagements)),
         }
 
-    def save_model(self, filepath: Optional[str] = None) -> None:
+    def save_model(self) -> None:
         """
-        Save the trained SOM model and preprocessor.
-
-        Args:
-            filepath: Path to save the model. If None and MLflow is enabled, saves temporarily for logging only.
+        Save the trained SOM model and preprocessor to MLflow.
         """
-        if not self.is_trained:
+        if not self.is_trained or self.som is None:
             raise ValueError("Cannot save untrained model")
 
         model_data = {
-            'som_weights': self.som.get_weights(),
-            'config': self.config.model_dump(),
-            'feature_names': self.feature_names,
-            'cluster_stats': self.cluster_stats,
-            'preprocessor': self.preprocessor,
-            'training_stats': self._calculate_training_stats()
+            "som_weights": self.som.get_weights(),
+            "config": self.config.model_dump(),
+            "feature_names": self.feature_names,
+            "cluster_stats": self.cluster_stats,
+            "preprocessor": self.preprocessor,
+            "training_stats": self._calculate_training_stats(),
         }
 
-        # Determine if we should save to disk
-        should_save_to_disk = filepath is not None and (not self.mlflow_enabled or mlflow.active_run() is None)
-        temp_filepath = filepath or "temp_model.pkl"
+        # Log model as artifact to MLflow
+        temp_filepath = "temp_model.pkl"
+        with open(temp_filepath, "wb") as f:
+            pickle.dump(model_data, f)
+        mlflow.log_artifact(temp_filepath, artifact_path="models")
+        os.remove(temp_filepath)
 
-        if should_save_to_disk or self.mlflow_enabled:
-            with open(temp_filepath, 'wb') as f:
-                pickle.dump(model_data, f)
-
-        # Log model as artifact if MLflow is enabled
-        if self.mlflow_enabled and mlflow.active_run():
-            mlflow.log_artifact(temp_filepath, artifact_path="models")
-
-            # Remove temporary file if we only created it for MLflow
-            if filepath is None and os.path.exists(temp_filepath):
-                os.remove(temp_filepath)
-
-    def export_results(self, filepath: Optional[str] = None) -> None:
+    def export_results(self) -> None:
         """
-        Export analysis results to JSON.
-
-        Args:
-            filepath: Path to save the results. If None and MLflow is enabled, saves temporarily for logging only.
+        Export analysis results to JSON and log to MLflow.
         """
         if not self.is_trained:
             raise ValueError("Cannot export results from untrained model")
 
         results = {
-            'training_stats': self._calculate_training_stats(),
-            'cluster_summary': self.get_all_clusters_summary(),
-            'feature_names': self.feature_names,
-            'cluster_details': self.cluster_stats
+            "training_stats": self._calculate_training_stats(),
+            "cluster_summary": self.get_all_clusters_summary(),
+            "feature_names": self.feature_names,
+            "cluster_details": self.cluster_stats,
         }
 
-        # Determine if we should save to disk
-        should_save_to_disk = filepath is not None and (not self.mlflow_enabled or mlflow.active_run() is None)
-        temp_filepath = filepath or "temp_results.json"
-
-        if should_save_to_disk or self.mlflow_enabled:
-            with open(temp_filepath, 'w') as f:
-                json.dump(results, f, indent=2, default=str)
-
-        # Log results as artifact if MLflow is enabled
-        if self.mlflow_enabled and mlflow.active_run():
-            mlflow.log_artifact(temp_filepath, artifact_path="results")
-
-            # Remove temporary file if we only created it for MLflow
-            if filepath is None and os.path.exists(temp_filepath):
-                os.remove(temp_filepath)
-
-    def log_visualizations_to_mlflow(
-        self, visualization_paths: Dict[str, str]
-    ) -> None:
-        """
-        Log visualization artifacts to MLflow.
-
-        Args:
-            visualization_paths: Dictionary mapping visualization names to file paths
-        """
-        if not self.mlflow_enabled or not mlflow.active_run():
-            return
-
-        for viz_name, file_path in visualization_paths.items():
-            if os.path.exists(file_path):
-                mlflow.log_artifact(file_path, artifact_path="visualizations")
+        # Log results as artifact to MLflow
+        temp_filepath = "temp_results.json"
+        with open(temp_filepath, "w") as f:
+            json.dump(results, f, indent=2, default=str)
+        mlflow.log_artifact(temp_filepath, artifact_path="results")
+        os.remove(temp_filepath)
 
     def log_additional_metrics(self, custom_metrics: Dict[str, float]) -> None:
         """
@@ -568,17 +562,4 @@ class TwitterSOMAnalyzer:
         Args:
             custom_metrics: Dictionary of metric names and values
         """
-        if not self.mlflow_enabled or not mlflow.active_run():
-            return
-
         mlflow.log_metrics(custom_metrics)
-
-    def end_mlflow_run(self, status: str = "FINISHED") -> None:
-        """
-        End the current MLflow run.
-
-        Args:
-            status: Run status ("FINISHED", "FAILED", "KILLED")
-        """
-        if self.mlflow_enabled and mlflow.active_run():
-            mlflow.end_run(status=status)
