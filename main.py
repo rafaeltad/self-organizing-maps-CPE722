@@ -25,7 +25,6 @@ from src.twitter_som import (
     load_twitter_data_from_parquet,
 )
 
-
 import logging
 
 LOGGER = logging.getLogger(__name__)
@@ -57,8 +56,8 @@ Examples:
     parser.add_argument(
         "--experiment",
         type=str,
-        default=None,
-        help="MLflow experiment name for logging metrics and artifacts. If not provided, MLflow logging is disabled.",
+        default="SOMtwitter",
+        help="MLflow experiment name for logging metrics and artifacts.",
     )
 
     parser.add_argument(
@@ -103,84 +102,94 @@ Examples:
         mlflow.set_tracking_uri(args.mlflow_tracking_uri)
         LOGGER.info(f"MLflow tracking URI set to: {args.mlflow_tracking_uri}")
 
-    # Load Twitter Data from parquet file
-    LOGGER.info(f"Loading Twitter data from: {args.data_file}")
-    try:
-        collection = load_twitter_data_from_parquet(
-            file_path=args.data_file,
-            max_rows=args.max_rows,
-            sample_fraction=args.sample_fraction,
-            random_state=args.random_state,
-        )
+    # Set MLflow experiment
+    mlflow.set_experiment(args.experiment)
+    LOGGER.info(f"Using MLflow experiment: {args.experiment}")
+
+    # Always use MLflow
+    with mlflow.start_run():
+        # Load Twitter Data from parquet file
+        LOGGER.info(f"Loading Twitter data from: {args.data_file}")
+        try:
+            collection = load_twitter_data_from_parquet(
+                file_path=args.data_file,
+                max_rows=args.max_rows,
+                sample_fraction=args.sample_fraction,
+                random_state=args.random_state,
+            )
+            LOGGER.info(
+                f"Loaded {len(collection.tweets)} tweets from {args.data_file}"
+            )
+
+            # Log some basic statistics
+            date_range = collection.get_date_range()
+            unique_users = len(collection.get_unique_users())
+            LOGGER.info(f"Date range: {date_range[0]} to {date_range[1]}")
+            LOGGER.info(f"Unique users: {unique_users}")
+
+        except Exception as e:
+            LOGGER.error(f"Failed to load data from {args.data_file}: {e}")
+            # Fallback to sample data for demonstration
+            LOGGER.info("Using sample data for demonstration")
+            tweets = [
+                TwitterData(
+                    id_str="1",
+                    text="Excited about #MachineLearning and #DataScience!",
+                    created_at=datetime.now(timezone.utc),
+                    user_id="user1",
+                    screen_name="datascientist",
+                ),
+                TwitterData(
+                    id_str="2",
+                    text="Just finished reading a great paper on neural networks #AI",
+                    created_at=datetime.now(timezone.utc) - timedelta(hours=1),
+                    user_id="user2",
+                    screen_name="researcher",
+                ),
+                TwitterData(
+                    id_str="3",
+                    text="Excited about the future of technology! #Innovation #Tech",
+                    created_at=datetime.now(timezone.utc) - timedelta(hours=2),
+                    user_id="user3",
+                    screen_name="techie",
+                ),
+            ]
+            collection = TwitterDataCollection(
+                tweets=tweets, collection_name="sample_data"
+            )
+
+        # Get Config From Yaml
+        # Load configuration from YAML file using the new from_yaml method
+        config = SOMTrainingConfig.from_yaml("config/config.yaml")
+
+        # Train SOM (with optional MLflow tracking)
+        analyzer = TwitterSOMAnalyzer(config)
+        training_stats = analyzer.train(collection)
+
+        # Analyze results
+        cluster_summary = analyzer.get_all_clusters_summary()
+        LOGGER.info(f"Found {cluster_summary['total_clusters']} clusters")
+
+        # Visualize results
+        visualizer = SOMVisualizer(analyzer)
+        visualizer.plot_som_topology()
+        visualizer.plot_cluster_analysis()
+
+        # Save model
+        analyzer.save_model()
+
+        # Log data usage information
         LOGGER.info(
-            f"Loaded {len(collection.tweets)} tweets from {args.data_file}"
+            f"Analysis completed using {len(collection.tweets)} tweets"
         )
+        if args.max_rows:
+            LOGGER.info(f"Limited to first {args.max_rows} rows from dataset")
+        elif args.sample_fraction:
+            LOGGER.info(
+                f"Used {args.sample_fraction*100:.1f}% sample of the dataset"
+            )
 
-        # Log some basic statistics
-        date_range = collection.get_date_range()
-        unique_users = len(collection.get_unique_users())
-        LOGGER.info(f"Date range: {date_range[0]} to {date_range[1]}")
-        LOGGER.info(f"Unique users: {unique_users}")
-
-    except Exception as e:
-        LOGGER.error(f"Failed to load data from {args.data_file}: {e}")
-        # Fallback to sample data for demonstration
-        LOGGER.info("Using sample data for demonstration")
-        tweets = [
-            TwitterData(
-                id_str="1",
-                text="Excited about #MachineLearning and #DataScience!",
-                created_at=datetime.now(timezone.utc),
-                user_id="user1",
-                screen_name="datascientist",
-            ),
-            # ... more tweets
-        ]
-        collection = TwitterDataCollection(
-            tweets=tweets, collection_name="sample_data"
-        )
-
-    # Get Config From Yaml
-    # Load configuration from YAML file using the new from_yaml method
-    config = SOMTrainingConfig.from_yaml("config/config.yaml")
-
-    # Train SOM (with optional MLflow tracking)
-    analyzer = TwitterSOMAnalyzer(
-        config, mlflow_experiment_name="twitter-analysis"
-    )
-    training_stats = analyzer.train(collection)
-
-    # Analyze results
-    cluster_summary = analyzer.get_all_clusters_summary()
-    LOGGER.info(f"Found {cluster_summary['total_clusters']} clusters")
-
-    # Visualize results
-    visualizer = SOMVisualizer(analyzer)
-    visualizer.plot_som_topology(save_path="som_topology.png")
-
-    # Log artifacts to MLflow (if enabled)
-    analyzer.log_visualizations_to_mlflow({"topology": "som_topology.png"})
-
-    # Save model and end MLflow run
-    analyzer.save_model("model.pkl")
-    analyzer.end_mlflow_run()
-    visualizer.plot_cluster_analysis()
-
-    if args.experiment:
-        LOGGER.info(
-            f"MLflow experiment '{args.experiment}' contains logged metrics and artifacts."
-        )
-
-    # Log data usage information
-    LOGGER.info(f"Analysis completed using {len(collection.tweets)} tweets")
-    if args.max_rows:
-        LOGGER.info(f"Limited to first {args.max_rows} rows from dataset")
-    elif args.sample_fraction:
-        LOGGER.info(
-            f"Used {args.sample_fraction*100:.1f}% sample of the dataset"
-        )
-
-    return analyzer, visualizer
+        return analyzer, visualizer
 
 
 if __name__ == "__main__":
